@@ -21,5 +21,6 @@
 2. `dotnet test TaskCapture.sln` の主要テストが成功する。
 3. `npm run lint` と `npm run build` が成功する。
 4. API を InMemory/RuleBased/Mock で起動し、整理から登録まで疎通する。
-5. レスポンシブ UI と launcher bridge をブラウザーで確認する（自動ブラウザー環境の初期化競合により、build/static/HTTP確認まで。実端末目視は `STATUS.md` の次作業）。
-6. 秘密情報がソースと生成 bundle に存在しないことを検索確認する。
+5. `scripts/Test-SqlServerIntegration.ps1` で migration、登録、再起動後のSQL永続化を確認する。
+6. レスポンシブ UI と launcher bridge をブラウザーで確認する（自動ブラウザー環境の初期化競合により、build/static/HTTP確認まで。実端末目視は `STATUS.md` の次作業）。
+7. 秘密情報がソースと生成 bundle に存在しないことを検索確認する。

@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>TaskCapture.Api-2e83e235-672a-4ea6-8b39-1f1860e4d2b2</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

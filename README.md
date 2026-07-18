@@ -33,7 +33,7 @@ npm run build --prefix src/taskcapture-web
 dotnet run --project src/TaskCapture.Api/TaskCapture.Api.csproj --launch-profile http
 ```
 
-[http://localhost:5080](http://localhost:5080) を開きます。launch profile は `Development` のため、DB は InMemory、整理は RuleBased、登録先は Mock です。production bundle は API の `wwwroot` へ生成され、同じ origin から配信されます。
+[http://localhost:5080](http://localhost:5080) を開きます。User Secrets を未設定の環境では、launch profile は `Development` のため DB は InMemory、整理は RuleBased、登録先は Mock です。production bundle は API の `wwwroot` へ生成され、同じ origin から配信されます。SQL Server 用 User Secrets を設定済みの場合は、同じ起動コマンドで SQL Server を使用します。
 
 開発中に React の hot reload を使う場合は、API を起動したまま別の PowerShell で実行します。
 
@@ -52,6 +52,10 @@ $env:TASK_CAPTURE_WEB_URL = "http://localhost:5080"
 dotnet run --project src/TaskCapture.Launcher/TaskCapture.Launcher.csproj
 ```
 
+- 通常起動: 入力画面を表示してtrayへ常駐
+- `--background`: Windows自動起動向けに入力画面を出さずtrayへ常駐
+- `--clipboard`: 起動直後にclipboardを読み込んだ入力画面を表示
+- 入力画面を開いている間はタスクバーとAlt+Tabに表示し、閉じるとtrayへ戻る
 - tray icon のダブルクリック: 空の入力画面を開く
 - `Ctrl+Shift+A`: clipboard を読み込んで入力画面を開く
 - tray menu: 空で開く / clipboard から開く / 終了
@@ -62,7 +66,28 @@ dotnet run --project src/TaskCapture.Launcher/TaskCapture.Launcher.csproj
 
 ## SQL Server を使う
 
-`Development` 以外で `Database__Provider=SqlServer` と安全な接続文字列を設定します。接続文字列はソースへ書かず、環境変数、.NET Secret Manager、または配備先の Secret Store を使ってください。
+接続文字列はソースへ書かず、ローカル開発では .NET User Secrets、配備先では環境変数または Secret Store を使います。本機の既定インスタンス `DESKTOP-RQ3T767` を使う設定例:
+
+```powershell
+$project = "src/TaskCapture.Api/TaskCapture.Api.csproj"
+dotnet user-secrets set "Database:Provider" "SqlServer" --project $project
+dotnet user-secrets set "Database:ApplyMigrations" "true" --project $project
+dotnet user-secrets set "ConnectionStrings:TaskCapture" "Server=DESKTOP-RQ3T767;Database=TaskCapture;Integrated Security=True;TrustServerCertificate=True;MultipleActiveResultSets=True" --project $project
+dotnet user-secrets set "Integration:Asana:Mode" "Mock" --project $project
+dotnet run --project $project --launch-profile http
+```
+
+User Secrets はユーザープロファイル側に保存され、Git の対象になりません。別SQL Serverへ付け替える場合は `ConnectionStrings:TaskCapture` の値だけを新しい接続文字列へ変更します。
+
+実SQLで migration、整理、Mock登録、API再起動後の履歴、6テーブルの行を一括確認できます。スクリプトは監査可能なスモーク履歴を1件残します。
+
+```powershell
+& ./scripts/Test-SqlServerIntegration.ps1 `
+  -ServerInstance DESKTOP-RQ3T767 `
+  -Database TaskCapture
+```
+
+配備環境では次のように環境変数へ差し替えます。
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = "Production"
@@ -72,7 +97,16 @@ $env:ConnectionStrings__TaskCapture = "Server=YOUR_SERVER;Database=TaskCapture;I
 dotnet run --project src/TaskCapture.Api/TaskCapture.Api.csproj --no-launch-profile --urls http://localhost:5080
 ```
 
-起動時に `InitialCreate` migration を適用します。migration SQL を接続せず確認する場合:
+起動時に未適用の migration を適用します。設計時DbContextも `ConnectionStrings__TaskCapture` を優先するため、手動適用先を明示できます。
+
+```powershell
+$env:ConnectionStrings__TaskCapture = "Server=YOUR_SERVER;Database=TaskCapture;Integrated Security=True;TrustServerCertificate=True"
+dotnet tool run dotnet-ef database update `
+  --project src/TaskCapture.Api/TaskCapture.Api.csproj `
+  --startup-project src/TaskCapture.Api/TaskCapture.Api.csproj
+```
+
+migration SQL を接続せず確認する場合:
 
 ```powershell
 dotnet tool run dotnet-ef migrations script --idempotent `
@@ -114,7 +148,7 @@ npm run lint --prefix src/taskcapture-web
 npm run build --prefix src/taskcapture-web
 ```
 
-API テストは、整理ルール、入力検証、候補修正、Mock 登録、DB 履歴、成功後の二重登録防止を InMemory provider で確認します。
+API テストは、整理ルール、入力検証、候補修正、Mock 登録、DB 履歴、成功後の二重登録防止、設計時接続文字列の差し替えを確認します。実SQLの任意確認には `scripts/Test-SqlServerIntegration.ps1` を使います。
 
 ## iPhone / iPad で使う
 
@@ -129,12 +163,11 @@ API と built SPA を端末から到達できる HTTPS URL に配置してくだ
 
 ## 現時点で未設定・未確認のもの
 
-- GitHub connector の再認証、remote / Issue / PR の同期確認
-- 実 SQL Server 接続での migration smoke test
 - 実 Asana PAT を使った限定 project への登録 smoke test
 - iPhone / iPad の音声・clipboard と Windows tray/hotkey の実端末 QA
+- ブラウザー自動操作環境での目視レイアウトQA
 
-実装済みの Mock/RuleBased/InMemory 経路はこれらがなくても動きます。
+GitHubへの公開、ローカルSQL Server migration、SQL永続化スモークは完了しています。Asana認証情報がなくても、実装済みの Mock/RuleBased/SQL Server 経路でMVP全フローを利用できます。
 
 ## ドキュメント
 

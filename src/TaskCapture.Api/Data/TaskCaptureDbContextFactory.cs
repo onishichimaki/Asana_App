@@ -7,8 +7,15 @@ public sealed class TaskCaptureDbContextFactory : IDesignTimeDbContextFactory<Ta
 {
     public TaskCaptureDbContext CreateDbContext(string[] args)
     {
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__TaskCapture");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            connectionString =
+                "Server=(localdb)\\MSSQLLocalDB;Database=TaskCaptureDesign;Trusted_Connection=True;TrustServerCertificate=True";
+        }
+
         var options = new DbContextOptionsBuilder<TaskCaptureDbContext>()
-            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=TaskCaptureDesign;Trusted_Connection=True;TrustServerCertificate=True")
+            .UseSqlServer(connectionString)
             .Options;
         return new TaskCaptureDbContext(options);
     }
