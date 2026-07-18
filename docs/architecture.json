@@ -1,0 +1,319 @@
+{
+  "system_name": "Task Capture for Asana",
+  "summary": "Reactの1画面から入力を整理・確認し、ASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "modules": [
+    {
+      "id": "responsive_web_ui",
+      "name": "Responsive Web UI",
+      "type": "React SPA",
+      "responsibility": "テキスト、貼り付け、Clipboard API、Web Speech API入力と候補確認・修正・登録を1画面で提供する。",
+      "main_inputs": ["利用者入力", "launcher clipboard message", "API response"],
+      "main_outputs": ["organize request", "candidate update", "registration request"],
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
+    },
+    {
+      "id": "api_host",
+      "name": "API Host",
+      "type": "ASP.NET Core Web API",
+      "responsibility": "設定、DI、CORS、例外処理、静的SPA配信、Controller routingを構成する。",
+      "main_inputs": ["HTTP JSON", "environment variables", "appsettings"],
+      "main_outputs": ["HTTP JSON", "Problem Details", "SPA assets"],
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs", "src/TaskCapture.Api/appsettings.json"]
+    },
+    {
+      "id": "task_workflow",
+      "name": "Task Workflow",
+      "type": "Application service",
+      "responsibility": "入力保存、候補生成・更新、冪等な登録、状態遷移、監査記録を一貫して調停する。",
+      "main_inputs": ["validated DTO", "client key", "correlation id"],
+      "main_outputs": ["candidate", "registration", "history and audit rows"],
+      "source_files": ["src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Contracts/TaskDtos.cs"]
+    },
+    {
+      "id": "task_organizer",
+      "name": "Task Organizer",
+      "type": "Replaceable domain service",
+      "responsibility": "入力からタイトル、内容、担当者、期限を決定的な日本語ルールで抽出する。",
+      "main_inputs": ["raw text", "current Japan date"],
+      "main_outputs": ["OrganizedTask"],
+      "source_files": ["src/TaskCapture.Api/Services/TaskOrganizer.cs", "tests/TaskCapture.Api.Tests/RuleBasedTaskOrganizerTests.cs"]
+    },
+    {
+      "id": "asana_integration",
+      "name": "Asana Integration",
+      "type": "External service adapter",
+      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使ってタスクを作成する。",
+      "main_inputs": ["confirmed candidate", "server-side Asana settings"],
+      "main_outputs": ["provider result", "external GID", "permalink or safe error"],
+      "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
+    },
+    {
+      "id": "persistence",
+      "name": "Persistence",
+      "type": "EF Core / SQL Server",
+      "responsibility": "6テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
+      "main_inputs": ["entities", "connection configuration"],
+      "main_outputs": ["SQL Server rows", "migration DDL"],
+      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
+    },
+    {
+      "id": "windows_launcher",
+      "name": "Windows Launcher",
+      "type": "WinForms + WebView2",
+      "responsibility": "tray常駐、Ctrl+Shift+A、clipboard bridge、同一Web UI表示、登録後自動非表示を提供する。",
+      "main_inputs": ["global hotkey", "tray action", "Windows clipboard", "web message"],
+      "main_outputs": ["WebView2 window", "clipboard message", "window hide"],
+      "source_files": ["src/TaskCapture.Launcher/LauncherApplicationContext.cs", "src/TaskCapture.Launcher/LauncherForm.cs", "src/TaskCapture.Launcher/Program.cs"]
+    }
+  ],
+  "screens": [
+    {
+      "id": "task_capture_screen",
+      "name": "Task Capture 1画面",
+      "type": "Responsive SPA screen",
+      "description": "入力、整理、候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css"]
+    },
+    {
+      "id": "launcher_webview_surface",
+      "name": "Launcher WebView surface",
+      "type": "Desktop host surface",
+      "description": "520x760を既定とする小型のWebView2 host。ネイティブ画面は持たずTask Capture SPAを再利用する。",
+      "source_files": ["src/TaskCapture.Launcher/LauncherForm.cs", "src/taskcapture-web/src/App.tsx"]
+    }
+  ],
+  "apis": [
+    {
+      "id": "health_get",
+      "name": "GET /api/health",
+      "type": "HTTP GET",
+      "description": "秘密情報を含めず起動状態とDB/organizer/Asana modeを返す。",
+      "source_files": ["src/TaskCapture.Api/Controllers/HealthController.cs"]
+    },
+    {
+      "id": "organize_post",
+      "name": "POST /api/task-requests/organize",
+      "type": "HTTP POST",
+      "description": "1〜10,000文字の入力を保存し、1件の候補を生成する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "src/TaskCapture.Api/Contracts/TaskDtos.cs"]
+    },
+    {
+      "id": "recent_get",
+      "name": "GET /api/task-requests/recent",
+      "type": "HTTP GET",
+      "description": "限定利用者向けに直近1〜20件の入力・候補・登録結果を返す。UIでは未使用。",
+      "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+    },
+    {
+      "id": "candidate_put",
+      "name": "PUT /api/task-candidates/{id}",
+      "type": "HTTP PUT",
+      "description": "確認・修正した候補を登録せず保存する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/TaskCandidatesController.cs", "src/TaskCapture.Api/Contracts/TaskDtos.cs"]
+    },
+    {
+      "id": "register_post",
+      "name": "POST /api/task-candidates/{id}/register",
+      "type": "HTTP POST",
+      "description": "候補の最終値を保存し、成功済み候補を二重登録せずAsana/Mockへ登録する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/TaskCandidatesController.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+    }
+  ],
+  "database": {
+    "tables": [
+      {
+        "id": "users",
+        "name": "Users",
+        "description": "限定利用のclient keyと表示名を保持する。認証資格情報は保持しない。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
+      },
+      {
+        "id": "task_requests",
+        "name": "TaskRequests",
+        "description": "最大10,000文字の原文、入力source、状態、エラー概要、UTC時刻を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/TaskCaptureDbContext.cs"]
+      },
+      {
+        "id": "task_candidates",
+        "name": "TaskCandidates",
+        "description": "タイトル、内容、担当者、期限と折りたたみ詳細設定を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/TaskCaptureDbContext.cs"]
+      },
+      {
+        "id": "asana_registrations",
+        "name": "AsanaRegistrations",
+        "description": "Mock/Asana provider、成功、外部GID/URL、安全なエラー概要を試行ごとに保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "application_settings",
+        "name": "ApplicationSettings",
+        "description": "有効mode等の非秘密メタデータを保持する。PATや接続文字列は保存しない。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/DbInitializer.cs"]
+      },
+      {
+        "id": "audit_logs",
+        "name": "AuditLogs",
+        "description": "整理・編集・登録のイベント、entity、correlation ID、安全な詳細を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      }
+    ],
+    "relationships": [
+      {
+        "id": "user_requests",
+        "name": "Users 1:N TaskRequests",
+        "description": "利用者ごとの入力履歴。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs"]
+      },
+      {
+        "id": "request_candidates",
+        "name": "TaskRequests 1:N TaskCandidates",
+        "description": "MVPは1件生成するが、スキーマは再整理履歴を許容する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "candidate_registrations",
+        "name": "TaskCandidates 1:N AsanaRegistrations",
+        "description": "失敗後の再試行履歴を保持し、成功後は二重登録を防ぐ。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "user_audits",
+        "name": "Users 1:N AuditLogs",
+        "description": "利用者の監査イベント。削除連鎖はNoAction。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs"]
+      }
+    ]
+  },
+  "batches": [
+    {
+      "id": "no_scheduled_batches",
+      "name": "定期バッチなし",
+      "type": "Not found / intentionally absent",
+      "description": "MVPは同期的な登録専用で、schedulerやbackground jobは実装していない。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "ARCHITECTURE.md"]
+    }
+  ],
+  "external_integrations": [
+    {
+      "id": "asana_rest_api",
+      "name": "Asana REST API",
+      "type": "HTTPS JSON API",
+      "description": "POST /api/1.0/tasks。Bearer PATはサーバー設定だけから読み取る。",
+      "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/appsettings.json"]
+    },
+    {
+      "id": "sql_server",
+      "name": "SQL Server",
+      "type": "Relational database",
+      "description": "EF Core SqlServer providerとInitialCreate migrationで本番履歴を保存する。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
+    },
+    {
+      "id": "browser_platform_apis",
+      "name": "Clipboard / Web Speech APIs",
+      "type": "Browser APIs",
+      "description": "テキスト貼り付けとja-JP音声入力。非対応時はテキストへフォールバックする。",
+      "source_files": ["src/taskcapture-web/src/App.tsx", "REQUIREMENTS.md"]
+    },
+    {
+      "id": "webview2_runtime",
+      "name": "Microsoft Edge WebView2 Runtime",
+      "type": "Windows runtime",
+      "description": "launcherで同じSPAをhostし、JSON web messageでclipboardと完了通知を橋渡しする。",
+      "source_files": ["src/TaskCapture.Launcher/LauncherForm.cs", "src/TaskCapture.Launcher/TaskCapture.Launcher.csproj"]
+    }
+  ],
+  "data_flows": [
+    {
+      "id": "organize_flow",
+      "name": "入力から候補",
+      "inputs": ["text / paste / voice / clipboard"],
+      "processing": ["React validation", "POST organize", "TaskRequest save", "RuleBased extraction", "TaskCandidate and AuditLog save"],
+      "outputs": ["editable candidate"],
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs"]
+    },
+    {
+      "id": "registration_flow",
+      "name": "候補からAsana登録",
+      "inputs": ["confirmed candidate"],
+      "processing": ["DataAnnotations", "idempotency lookup", "Mock/Asana adapter", "registration and audit save"],
+      "outputs": ["external GID/URL or safe error"],
+      "source_files": ["src/TaskCapture.Api/Contracts/TaskDtos.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
+    },
+    {
+      "id": "launcher_flow",
+      "name": "Windows launcher入力",
+      "inputs": ["Ctrl+Shift+A or tray", "Windows clipboard"],
+      "processing": ["RegisterHotKey", "WebView2 navigate", "clipboard web message", "registration-complete message"],
+      "outputs": ["prefilled SPA", "hidden window after success"],
+      "source_files": ["src/TaskCapture.Launcher/LauncherApplicationContext.cs", "src/TaskCapture.Launcher/LauncherForm.cs", "src/taskcapture-web/src/App.tsx"]
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "dotnet_stack",
+      "name": ".NET 8 / ASP.NET Core / EF Core 8",
+      "description": "API、SQL Server provider、migration、WinFormsの基盤。",
+      "source_files": ["src/TaskCapture.Api/TaskCapture.Api.csproj", "src/TaskCapture.Launcher/TaskCapture.Launcher.csproj"]
+    },
+    {
+      "id": "web_stack",
+      "name": "React 19 / TypeScript 6 / Vite 8",
+      "description": "SPA実装、型検査、production bundle。",
+      "source_files": ["src/taskcapture-web/package.json", "src/taskcapture-web/vite.config.ts"]
+    },
+    {
+      "id": "webview2_sdk",
+      "name": "Microsoft.Web.WebView2",
+      "description": "WinForms launcherのWebView2 controlとweb message API。",
+      "source_files": ["src/TaskCapture.Launcher/TaskCapture.Launcher.csproj", "src/TaskCapture.Launcher/LauncherForm.cs"]
+    }
+  ],
+  "risks_or_unknowns": [
+    {
+      "id": "limited_auth_only",
+      "name": "本格認証なし",
+      "description": "X-TaskCapture-Clientは端末識別用で認証ではない。外部公開前に組織認証、TLS、rate limitが必要。",
+      "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "DECISIONS.md"]
+    },
+    {
+      "id": "real_integrations_unverified",
+      "name": "実SQL Server / Asana未接続",
+      "description": "provider、migration、adapterは実装済みだが、接続先とPATがないため実サービスsmoke testは未実施。",
+      "source_files": ["STATUS.md", "src/TaskCapture.Api/appsettings.json"]
+    },
+    {
+      "id": "speech_compatibility",
+      "name": "音声入力のブラウザー差",
+      "description": "Web Speech API対応とマイク権限に依存し、mobileではHTTPS配信が必要。",
+      "source_files": ["src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
+    },
+    {
+      "id": "visual_qa_environment",
+      "name": "自動ブラウザー目視QA未完",
+      "description": "browser control初期化競合のため、production HTML/asset HTTP応答とbuild/static responsive CSSで代替確認した。",
+      "source_files": ["STATUS.md", "src/taskcapture-web/src/App.css"]
+    }
+  ],
+  "recommended_next_actions": [
+    {
+      "id": "connect_github",
+      "name": "GitHub接続復旧とremote同期",
+      "description": "connectorを再認証し、Issue/PR/既定branchとローカル初期実装の差分を確認する。",
+      "source_files": ["STATUS.md", "DECISIONS.md"]
+    },
+    {
+      "id": "real_smoke_test",
+      "name": "限定環境で実連携smoke test",
+      "description": "SQL Server connectionとAsana PAT/workspace/project GIDをSecret Manager経由で設定する。",
+      "source_files": ["README.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
+    },
+    {
+      "id": "device_qa",
+      "name": "実端末QA",
+      "description": "iPhone/iPadのHTTPS URLで音声・clipboard・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
+      "source_files": ["REQUIREMENTS.md", "src/TaskCapture.Launcher/LauncherApplicationContext.cs"]
+    }
+  ]
+}

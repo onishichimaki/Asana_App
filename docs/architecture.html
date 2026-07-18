@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Task Capture — Architecture</title>
+  <style>
+    :root{--navy:#16243a;--blue:#526ed3;--blue-soft:#eef2ff;--ink:#243047;--muted:#6c778b;--line:#dfe5ef;--paper:#fff;--canvas:#f5f7fb;--green:#11856b;--amber:#a86200;--red:#b43d49}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--canvas);font-family:"Yu Gothic UI","Hiragino Sans",Meiryo,system-ui,sans-serif;line-height:1.55}.wrap{width:min(1240px,calc(100% - 36px));margin:auto}.hero{padding:54px 0 35px;color:#fff;background:var(--navy)}.kicker{margin:0 0 8px;color:#aebff7;font-size:12px;font-weight:800;letter-spacing:.16em}.hero h1{margin:0;font-size:clamp(28px,5vw,46px);letter-spacing:-.04em}.hero p{max-width:700px;margin:12px 0 26px;color:#c8d1e0}.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.fact{padding:15px 17px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:rgba(255,255,255,.06)}.fact strong{display:block;font-size:18px}.fact span{color:#b8c3d5;font-size:12px}.tabs{position:sticky;top:0;z-index:5;padding:12px 0;border-bottom:1px solid var(--line);background:rgba(245,247,251,.94);backdrop-filter:blur(10px)}.tabs .wrap{display:flex;gap:7px;overflow:auto}.tab{padding:8px 14px;border:1px solid var(--line);border-radius:999px;color:#566278;background:#fff;white-space:nowrap;cursor:pointer;font-weight:700}.tab.active{color:#fff;border-color:var(--blue);background:var(--blue)}main{padding:25px 0 45px}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.8fr);gap:20px;align-items:start}.map,.detail,.section{border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 8px 26px rgba(33,49,75,.05)}.section-title{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line)}.section-title h2{margin:0;font-size:16px}.section-title span{color:var(--muted);font-size:11px}.lanes{padding:20px}.lane{position:relative;margin-bottom:14px;padding:13px;border:1px solid #e8ecf3;border-radius:13px;background:#fafbfe}.lane:last-child{margin-bottom:0}.lane-label{margin:0 0 9px;color:#8490a4;font-size:10px;font-weight:800;letter-spacing:.12em}.nodes{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.node{min-height:88px;padding:12px;border:1px solid var(--line);border-radius:10px;text-align:left;color:var(--ink);background:#fff;cursor:pointer;transition:.15s}.node:hover,.node.active{border-color:#8ea1eb;box-shadow:0 0 0 3px #eef2ff;transform:translateY(-1px)}.node .type{display:block;margin-bottom:4px;color:var(--blue);font-size:9px;font-weight:800;text-transform:uppercase}.node strong{display:block;font-size:13px}.node small{display:block;margin-top:3px;color:var(--muted);font-size:10px}.arrow{text-align:center;height:17px;color:#aab4c4}.detail{position:sticky;top:74px;overflow:hidden}.detail-head{padding:20px;color:#fff;background:var(--navy)}.detail-head .badge{display:inline-block;margin-bottom:8px;padding:3px 7px;border-radius:5px;color:#dbe3ff;background:rgba(255,255,255,.1);font-size:10px;font-weight:800}.detail-head h2{margin:0;font-size:20px}.detail-body{padding:20px}.detail-body h3{margin:20px 0 7px;color:#68758a;font-size:10px;letter-spacing:.1em;text-transform:uppercase}.detail-body h3:first-child{margin-top:0}.detail-body p{margin:0;font-size:13px}.sources{padding:0;margin:0;list-style:none}.sources li{padding:7px 9px;margin-top:6px;border-radius:7px;color:#4d5f7e;background:#f1f4f9;font:11px/1.45 Consolas,monospace;overflow-wrap:anywhere}.inventory{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:20px}.section{overflow:hidden}.cards{padding:14px}.card{display:flex;gap:12px;padding:12px;border-bottom:1px solid #edf0f5}.card:last-child{border-bottom:0}.icon{display:grid;place-items:center;width:31px;height:31px;flex:none;border-radius:8px;color:var(--blue);background:var(--blue-soft);font-size:11px;font-weight:900}.card strong{display:block;font-size:13px}.card p{margin:3px 0 0;color:var(--muted);font-size:11px}.risk .icon{color:var(--amber);background:#fff4dc}.risk.critical .icon{color:var(--red);background:#fff0f1}.footer-note{margin-top:20px;padding:14px 18px;border:1px dashed #cbd4e3;border-radius:12px;color:var(--muted);font-size:11px}.hidden{display:none!important}@media(max-width:860px){.layout{grid-template-columns:1fr}.detail{position:static}.nodes{grid-template-columns:repeat(2,1fr)}.inventory{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.hero{padding-top:35px}}@media(max-width:470px){.wrap{width:min(100% - 20px,1240px)}.nodes{grid-template-columns:1fr}.node{min-height:auto}.hero p{font-size:13px}}
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-18</p>
+      <h1>Task Capture for Asana</h1>
+      <p>入力を迷わず候補へ変え、確認後にAsanaへ渡す登録専用MVP。秘密情報と履歴はAPI境界の内側に置き、WebとWindows launcherは同じ1画面を共有します。</p>
+      <div class="facts">
+        <div class="fact"><strong>1 screen</strong><span>入力 → 整理 → 確認 → 登録</span></div>
+        <div class="fact"><strong>6 tables</strong><span>入力・候補・登録・設定・監査</span></div>
+        <div class="fact"><strong>3 safe defaults</strong><span>InMemory / RuleBased / Mock</span></div>
+      </div>
+    </div>
+  </header>
+  <nav class="tabs" aria-label="表示切り替え"><div class="wrap">
+    <button class="tab active" data-tab="all">全体</button><button class="tab" data-tab="surface">画面 / API / DB</button><button class="tab" data-tab="integration">外部連携</button><button class="tab" data-tab="risk">リスク</button>
+  </div></nav>
+  <main class="wrap">
+    <div class="layout" data-group="all surface integration">
+      <section class="map">
+        <div class="section-title"><h2>Runtime map</h2><span>要素を選択すると根拠を表示</span></div>
+        <div class="lanes">
+          <div class="lane"><p class="lane-label">CLIENT SURFACES</p><div class="nodes">
+            <button class="node active" data-node="web"><span class="type">React SPA</span><strong>Responsive Web UI</strong><small>text · paste · voice · clipboard</small></button>
+            <button class="node" data-node="launcher"><span class="type">WinForms</span><strong>Windows Launcher</strong><small>tray · Ctrl+Shift+A</small></button>
+            <button class="node" data-node="webview"><span class="type">WebView2</span><strong>Launcher Bridge</strong><small>clipboard · autoclose</small></button>
+          </div></div>
+          <div class="arrow">↓ HTTPS / JSON ↓</div>
+          <div class="lane"><p class="lane-label">SERVER APPLICATION</p><div class="nodes">
+            <button class="node" data-node="api"><span class="type">ASP.NET Core</span><strong>API Host</strong><small>validation · Problem Details</small></button>
+            <button class="node" data-node="workflow"><span class="type">Application</span><strong>Task Workflow</strong><small>state · idempotency · audit</small></button>
+            <button class="node" data-node="organizer"><span class="type">Domain service</span><strong>Task Organizer</strong><small>title · body · owner · due</small></button>
+          </div></div>
+          <div class="arrow">↓ adapter / EF Core ↓</div>
+          <div class="lane"><p class="lane-label">DATA & EXTERNAL</p><div class="nodes">
+            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>6 tables · migration</small></button>
+            <button class="node" data-node="asana"><span class="type">REST adapter</span><strong>Asana / Mock</strong><small>server-side PAT only</small></button>
+            <button class="node" data-node="audit"><span class="type">EF entities</span><strong>History & Audit</strong><small>UTC · correlation ID</small></button>
+          </div></div>
+        </div>
+      </section>
+      <aside class="detail" aria-live="polite">
+        <div class="detail-head"><span class="badge" id="detail-type">REACT SPA</span><h2 id="detail-name">Responsive Web UI</h2></div>
+        <div class="detail-body"><h3>Responsibility</h3><p id="detail-description"></p><h3>Inputs / Outputs</h3><p id="detail-flow"></p><h3>Source evidence</h3><ul class="sources" id="detail-sources"></ul></div>
+      </aside>
+    </div>
+
+    <div class="inventory" data-group="all surface">
+      <section class="section"><div class="section-title"><h2>HTTP API</h2><span>5 endpoints</span></div><div class="cards">
+        <div class="card"><span class="icon">GET</span><div><strong>/api/health</strong><p>modeを返す。秘密情報は返さない。</p></div></div>
+        <div class="card"><span class="icon">POST</span><div><strong>/api/task-requests/organize</strong><p>原文保存と1件の候補生成。</p></div></div>
+        <div class="card"><span class="icon">PUT</span><div><strong>/api/task-candidates/{id}</strong><p>確認・修正だけを保存。</p></div></div>
+        <div class="card"><span class="icon">POST</span><div><strong>/api/task-candidates/{id}/register</strong><p>最終保存と冪等な外部登録。</p></div></div>
+        <div class="card"><span class="icon">GET</span><div><strong>/api/task-requests/recent</strong><p>直近1〜20件。現在の1画面UIでは未使用。</p></div></div>
+      </div></section>
+      <section class="section"><div class="section-title"><h2>Database</h2><span>EF Core migration</span></div><div class="cards">
+        <div class="card"><span class="icon">U</span><div><strong>Users</strong><p>限定利用のclient key。資格情報なし。</p></div></div>
+        <div class="card"><span class="icon">R</span><div><strong>TaskRequests → TaskCandidates</strong><p>原文、source、状態から編集可能候補へ。</p></div></div>
+        <div class="card"><span class="icon">A</span><div><strong>AsanaRegistrations</strong><p>試行結果、provider、外部GID/URL。</p></div></div>
+        <div class="card"><span class="icon">S</span><div><strong>ApplicationSettings</strong><p>mode等の非秘密メタデータ。</p></div></div>
+        <div class="card"><span class="icon">L</span><div><strong>AuditLogs</strong><p>イベント、entity、correlation ID。</p></div></div>
+      </div></section>
+    </div>
+
+    <div class="inventory" data-group="all integration">
+      <section class="section"><div class="section-title"><h2>Integration boundary</h2><span>設定で差し替え</span></div><div class="cards">
+        <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>POST /api/1.0/tasks。PATはAPI設定のみ。</p></div></div>
+        <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
+        <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
+        <div class="card"><span class="icon">OS</span><div><strong>Clipboard / Speech / WebView2</strong><p>端末入力とlauncher bridge。非対応時はテキストへ。</p></div></div>
+      </div></section>
+      <section class="section"><div class="section-title"><h2>Data flow</h2><span>同期MVP</span></div><div class="cards">
+        <div class="card"><span class="icon">1</span><div><strong>Capture</strong><p>端末入力 → React → validated HTTP JSON。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>Organize</strong><p>TaskRequest → RuleBased → TaskCandidate + AuditLog。</p></div></div>
+        <div class="card"><span class="icon">3</span><div><strong>Confirm</strong><p>基本4項目を編集。高度な項目は折りたたみ。</p></div></div>
+        <div class="card"><span class="icon">4</span><div><strong>Register</strong><p>idempotency → Asana/Mock → Registration + Audit。</p></div></div>
+      </div></section>
+    </div>
+
+    <div class="inventory" data-group="all risk">
+      <section class="section"><div class="section-title"><h2>Known risks / unknowns</h2><span>事実と分離</span></div><div class="cards">
+        <div class="card risk critical"><span class="icon">!</span><div><strong>本格認証なし</strong><p>外部公開前に組織認証、TLS、rate limitが必要。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>実SQL Server / Asana未接続</strong><p>接続情報未提供。migrationとadapterまでは検証済み。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>自動ブラウザー目視QA未実施</strong><p>検証環境の初期化競合。HTTP/build/static CSSで代替。</p></div></div>
+      </div></section>
+      <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
+        <div class="card"><span class="icon">1</span><div><strong>GitHub再認証</strong><p>Issue/PR/remote既定branchとの差分を確認。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>限定環境smoke test</strong><p>SQL接続とAsana PAT/workspace/projectを安全に設定。</p></div></div>
+        <div class="card"><span class="icon">3</span><div><strong>実端末QA</strong><p>iPhone/iPad音声・clipboard、Windows tray/hotkey。</p></div></div>
+      </div></section>
+    </div>
+    <div class="footer-note">Machine-readable inventory: <strong>docs/architecture.json</strong> · Maintenance guide: <strong>docs/architecture_readme.md</strong> · 未確認事項は risks_or_unknowns にのみ記録します。</div>
+  </main>
+  <script>
+    const details={
+      web:{type:'React SPA',name:'Responsive Web UI',description:'テキスト、貼り付け、Clipboard API、Web Speech API入力と候補の確認・修正・登録を1画面で提供します。',flow:'利用者/launcher message → HTTP JSON → editable candidate / registration result',sources:['src/taskcapture-web/src/App.tsx','src/taskcapture-web/src/App.css','src/taskcapture-web/vite.config.ts']},
+      launcher:{type:'WinForms',name:'Windows Launcher',description:'trayに常駐し、Ctrl+Shift+Aまたはメニューから小型入力画面を開きます。',flow:'global hotkey / tray / clipboard → LauncherForm',sources:['src/TaskCapture.Launcher/LauncherApplicationContext.cs','src/TaskCapture.Launcher/Program.cs']},
+      webview:{type:'WebView2',name:'Launcher Bridge',description:'同じReact画面をhostし、clipboardをJSON messageで渡し、登録完了messageで画面を隠します。',flow:'Windows clipboard ⇄ JSON web message ⇄ React SPA',sources:['src/TaskCapture.Launcher/LauncherForm.cs','src/taskcapture-web/src/App.tsx']},
+      api:{type:'ASP.NET Core',name:'API Host',description:'DI、DB provider切替、CORS、Controller、Problem Details、production SPA配信を構成します。',flow:'HTTP / configuration → controllers and services → HTTP / static assets',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs']},
+      workflow:{type:'Application Service',name:'Task Workflow',description:'入力保存、候補生成・更新、状態遷移、冪等な登録、監査を調停します。',flow:'validated DTO → entities / adapters → candidate or registration response',sources:['src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Contracts/TaskDtos.cs']},
+      organizer:{type:'Domain Service',name:'Task Organizer',description:'外部キー不要の決定的ルールでタイトル、内容、担当者、期限を抽出します。ITaskOrganizerで差し替え可能です。',flow:'raw text + Japan date → OrganizedTask',sources:['src/TaskCapture.Api/Services/TaskOrganizer.cs','tests/TaskCapture.Api.Tests/RuleBasedTaskOrganizerTests.cs']},
+      db:{type:'EF Core / SQL Server',name:'Persistence',description:'6テーブル、index、relationship、InitialCreate migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs']},
+      asana:{type:'External Adapter',name:'Asana / Mock',description:'MockとAsana REST APIを設定で選択します。Bearer PATはサーバー側以外に出ません。',flow:'confirmed candidate → POST tasks / mock → safe result',sources:['src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs']},
+      audit:{type:'Data Model',name:'History & Audit',description:'入力、候補、登録試行、設定meta、イベントとcorrelation IDをUTCで保存します。',flow:'workflow events → 6 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs']}
+    };
+    const description=document.getElementById('detail-description'),flow=document.getElementById('detail-flow'),sources=document.getElementById('detail-sources'),name=document.getElementById('detail-name'),type=document.getElementById('detail-type');
+    function selectNode(id){const item=details[id];if(!item)return;document.querySelectorAll('.node').forEach(n=>n.classList.toggle('active',n.dataset.node===id));name.textContent=item.name;type.textContent=item.type;description.textContent=item.description;flow.textContent=item.flow;sources.replaceChildren(...item.sources.map(path=>{const li=document.createElement('li');li.textContent=path;return li}))}
+    document.querySelectorAll('.node').forEach(node=>node.addEventListener('click',()=>selectNode(node.dataset.node)));
+    document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===tab));const key=tab.dataset.tab;document.querySelectorAll('[data-group]').forEach(section=>section.classList.toggle('hidden',!section.dataset.group.split(' ').includes(key))) }));
+    selectNode('web');
+  </script>
+</body>
+</html>

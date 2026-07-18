@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.vs/
+**/.vscode/
+src/TaskCapture.Api/wwwroot/
+src/TaskCapture.Api/taskcapture.db
+*.user
+*.suo
+*.cache
+*.log
+.env
+.env.*
+!.env.example
+TestResults/
+coverage/
+src/taskcapture-web/src/assets/

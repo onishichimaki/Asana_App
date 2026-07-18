@@ -1,0 +1,4 @@
+:root { font-family:'Yu Gothic UI','Hiragino Sans','Meiryo',system-ui,sans-serif; color:#17202a; background:#f6f7f9; font-synthesis:none; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
+html { min-width:320px; min-height:100%; background:#f6f7f9; }
+body { min-width:320px; min-height:100vh; margin:0; background:radial-gradient(circle at 50% 0,#fff 0,#f6f7f9 38%); }
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible { outline:3px solid rgba(95,91,215,.35); outline-offset:2px; }
