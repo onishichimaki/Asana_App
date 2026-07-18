@@ -13,7 +13,7 @@ internal sealed class LauncherApplicationContext : ApplicationContext
     private readonly LauncherForm _window;
     private readonly HotKeyWindow _hotKeyWindow;
 
-    public LauncherApplicationContext()
+    public LauncherApplicationContext(bool showOnStart = false, bool useClipboardOnStart = false)
     {
         var webUrl = Environment.GetEnvironmentVariable("TASK_CAPTURE_WEB_URL") ?? "http://localhost:5080";
         _window = new LauncherForm(webUrl);
@@ -40,18 +40,24 @@ internal sealed class LauncherApplicationContext : ApplicationContext
             _trayIcon.BalloonTipText = "Ctrl+Shift+A を登録できませんでした。tray メニューから起動できます。";
             _trayIcon.ShowBalloonTip(4_000);
         }
+
+        if (showOnStart)
+        {
+            _window.Show();
+            ShowCapture(useClipboardOnStart);
+        }
     }
 
     private async void ShowCapture(bool useClipboard)
     {
-        string? clipboardText = null;
-        if (useClipboard && Clipboard.ContainsText(TextDataFormat.UnicodeText))
-        {
-            clipboardText = Clipboard.GetText(TextDataFormat.UnicodeText);
-        }
-
         try
         {
+            string? clipboardText = null;
+            if (useClipboard && Clipboard.ContainsText(TextDataFormat.UnicodeText))
+            {
+                clipboardText = Clipboard.GetText(TextDataFormat.UnicodeText);
+            }
+
             await _window.ShowCaptureAsync(clipboardText);
         }
         catch (Exception ex)

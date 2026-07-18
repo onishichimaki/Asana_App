@@ -31,6 +31,12 @@ npm run build --prefix src/taskcapture-web
 
 変更後は関連テストを先に実行し、最終確認で上記一式を実行してください。生成済み `wwwroot`、`bin`、`obj`、`node_modules` はコミットしません。
 
+SQL Server関連を変更した場合は、利用可能な検証用インスタンスを指定して実SQLスモークも実行してください。スクリプトは履歴確認用のデータを1件残します。
+
+```powershell
+& ./scripts/Test-SqlServerIntegration.ps1 -ServerInstance YOUR_SERVER -Database TaskCapture
+```
+
 ## 実装上の注意
 
 - API の DTO へ DataAnnotations を設定し、自由入力の最大長を維持します。

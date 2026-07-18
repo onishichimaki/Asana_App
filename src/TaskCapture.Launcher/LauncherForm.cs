@@ -26,7 +26,7 @@ internal sealed class LauncherForm : Form
         Height = 760;
         MinimumSize = new Size(400, 560);
         StartPosition = FormStartPosition.CenterScreen;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
         TopMost = true;
         FormBorderStyle = FormBorderStyle.SizableToolWindow;
         Controls.Add(_webView);

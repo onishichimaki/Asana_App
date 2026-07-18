@@ -62,3 +62,17 @@
 - 状態: 採用
 - 判断: 同じ TaskCandidate に成功済み AsanaRegistration があれば外部 API を再実行せず、既存結果を `AlreadyRegistered=true` で返す。
 - 理由: ダブルクリック、通信再送、launcher の再操作による Asana 二重登録を防ぐ。
+
+## D-010: ローカルSQL接続はUser Secretsで差し替える
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: リポジトリのDevelopment既定はInMemoryのまま維持し、本機の `DESKTOP-RQ3T767/TaskCapture` は .NET User Secrets でSQL Serverへ切り替える。設計時DbContextは `ConnectionStrings__TaskCapture` を優先する。
+- 理由: マシン固有の接続先をソースへ埋め込まず、ローカル実SQLを常用しつつ、完成後はUser Secretsまたは配備先環境変数の接続文字列だけで付け替えられるようにするため。
+
+## D-011: ランチャーの通常起動では入力画面を表示する
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: ランチャーの通常起動は入力画面を1回表示し、`--background` 指定時だけtrayのみで起動する。`--clipboard` は起動直後にclipboard入力を使う。入力画面を開いている間はタスクバーにも表示する。
+- 理由: 初回起動が完全に無表示だと起動成功を判断しにくいため。Windows自動起動では従来どおり静かに常駐でき、閉じた後はtrayへ戻る。
