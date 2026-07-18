@@ -1,0 +1,64 @@
+# 設計判断記録
+
+## D-001: .NET 8 LTS を使用
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: ASP.NET Core、EF Core、WinForms はインストール済みの .NET 8 LTS を使用する。
+- 理由: Web API と Windows ランチャーを同じ C# 世代で保守でき、MVP に十分なサポート期間がある。
+
+## D-002: 開発既定値は外部依存なし
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: Development は EF Core InMemory、RuleBased organizer、Mock Asana を既定とする。本番相当では SQL Server と Asana API を設定で選択する。
+- 理由: 外部認証情報と SQL Server インスタンスが未提供でも、全フローの実装・テストを継続するため。SQL Server provider と migration は同じモデルから提供する。
+
+## D-003: 1入力1候補
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: MVP は1回の入力から1件の TaskCandidate を生成する。
+- 理由: 確認操作を単純化し、最短登録を優先する。複数候補分割は対象外とする。
+
+## D-004: AI の MVP 実装は差し替え可能なルールベース
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: `ITaskOrganizer` として決定的な日本語対応ルール実装を提供し、AI API 実装は将来差し替える。
+- 理由: API/モデル指定がなく、外部キーもない。要件にあるモックまたはルールベース継続を満たし、テストの再現性を高める。
+
+## D-005: 音声はブラウザーの Web Speech API
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: サーバー録音保存や音声 API は持たず、対応ブラウザーの SpeechRecognition を使用する。
+- 理由: 1画面、低遅延、秘密情報不要という MVP に合う。非対応端末では明示してテキスト入力へフォールバックする。
+
+## D-006: ランチャーは WinForms + WebView2
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: tray と `RegisterHotKey` は WinForms、画面は同じ React UI を WebView2 で表示する。
+- 理由: UI 重複を避け、クリップボード投入と登録後の自動クローズをネイティブ bridge だけで実現できる。
+
+## D-007: GitHub 調査不能時の扱い
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: 空の作業フォルダーを新規リポジトリとして初期化し、GitHub Issue/PR 調査不能を STATUS に記録して実装を継続する。
+- 理由: GitHub コネクタは再認証要求、`gh` CLI は未導入で、対象リモートを特定できなかった。MVP 完成を優先し、リモート接続後に同期確認する。
+
+## D-008: DB provider 選択は DI 解決時に行う
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: `AddDbContext` の factory 内で現在の configuration を読み、SQL Server または InMemory を選ぶ。
+- 理由: 開発・テスト・本番の設定差し替えを同じ起動経路で有効にし、WebApplicationFactory でも外部 SQL Server なしに結合テストできるようにする。
+
+## D-009: 成功後の登録は冪等
+
+- 日付: 2026-07-18
+- 状態: 採用
+- 判断: 同じ TaskCandidate に成功済み AsanaRegistration があれば外部 API を再実行せず、既存結果を `AlreadyRegistered=true` で返す。
+- 理由: ダブルクリック、通信再送、launcher の再操作による Asana 二重登録を防ぐ。
