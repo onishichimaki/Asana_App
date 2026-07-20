@@ -208,7 +208,7 @@
       "id": "gemini_api",
       "name": "Gemini API",
       "type": "HTTPS AI API",
-      "description": "Google Gen AI .NET SDKからJSON Schema付きで呼び出す。APIキーはUser Secretsまたは配備先Secret Storeだけから読み、クライアント・DB・ログへ保存しない。",
+      "description": "Google Gen AI .NET SDKからJSON Schema付きで呼び出す。APIキーはUser Secretsまたは配備先Secret Storeだけから読み、クライアント・DB・ログへ保存しない。gemini-3.5-flashの実通信をローカルInMemory構成で確認済み。",
       "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/TaskCapture.Api.csproj", "README.md"]
     },
     {
@@ -294,12 +294,6 @@
   ],
   "risks_or_unknowns": [
     {
-      "id": "gemini_live_smoke_pending",
-      "name": "Gemini実通信はSecret再発行待ち",
-      "description": "SDK、構造化変換、JST基準日、フォールバックはモックで確認済み。チャットへ露出したキーは使用せず、失効・再発行した未露出キーによる実通信が未確認。",
-      "source_files": ["STATUS.md", "README.md", "tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs"]
-    },
-    {
       "id": "limited_auth_only",
       "name": "本格認証なし",
       "description": "X-TaskCapture-Clientは端末識別用で認証ではない。外部公開前に組織認証、TLS、rate limitが必要。",
@@ -325,12 +319,6 @@
     }
   ],
   "recommended_next_actions": [
-    {
-      "id": "gemini_live_smoke",
-      "name": "Gemini実通信スモーク",
-      "description": "Google AI Studioで露出キーを失効・再発行し、User Secretsへ入力して候補生成とRuleBasedフォールバックを確認する。",
-      "source_files": ["README.md", "STATUS.md", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
-    },
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",

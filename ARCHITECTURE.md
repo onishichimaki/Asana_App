@@ -82,4 +82,4 @@ erDiagram
 
 ## 実装根拠と引き継ぎ
 
-人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。実 SQL Server/Asana はローカル限定環境で検証済みである。GeminiはSDK・構造化変換・フォールバックのテストまで完了し、再発行したSecretによる実通信、HTTPS配備、端末 QAは inventory の `risks_or_unknowns` に分離している。
+人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、実 SQL Server、Asana限定projectへの登録はローカル限定環境で実通信まで検証済みである。未確認のHTTPS配備と端末 QAは inventory の `risks_or_unknowns` に分離している。

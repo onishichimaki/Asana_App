@@ -4,8 +4,8 @@
 
 ## 現在地
 
-- フェーズ: MVP完成、Gemini AI整理の実装・自動テスト完了、実API Secret再発行待ち
-- MVP 判定: Mock/RuleBased/SQL Server/Asana API経路は完成。Gemini実通信のみ外部待ち。
+- フェーズ: MVP完成、Gemini/SQL Server/Asana実連携まで確認済み
+- MVP 判定: Gemini/RuleBased、SQL Server、Asana API/Mockの主要経路が完成。
 
 ## 完了
 
@@ -53,16 +53,16 @@
 - 画像OCR実動作: 日本語画面画像から476文字を抽出し、画像ファイル非送信を確認
 - Gemini organizer: 構造化JSON変換、JST基準日、欠損値処理、RuleBasedフォールバックをSDKモックで確認
 - Gemini mode / APIキー未設定の実HTTP smoke: healthはGemini modelとfallback有効を返し、候補はRuleBasedで正常生成
+- Gemini実通信: fallback無効の独立InMemory APIで `gemini-3.5-flash` がタイトル・担当者・期限を構造化し、HTTP 200を確認
+- 通常起動: SQL Server / Gemini（fallback有効）/ Asana API、Windows launcher応答を確認
 
 ## 未完了 / 外部待ち
 
 - Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
-- チャットへ貼られたGemini APIキーは使用せず、失効・再発行した未露出キーによる実通信スモークが必要。
 - 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
 - HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視は未設定。
 
 ## 次に必要な作業
 
-1. Google AI Studioで露出キーを失効・再発行し、ローカルUser Secretsへ設定してGemini整理を1件スモークする。
-2. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
-3. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
+1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
+2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。

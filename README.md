@@ -129,15 +129,16 @@ dotnet tool run dotnet-ef migrations script --idempotent `
 
 `TaskOrganization:Mode=Gemini` のとき、ASP.NET Core APIだけがGemini APIを呼びます。ブラウザーとlauncherへAPIキーは渡しません。APIキー未設定、タイムアウト、Geminiエラーの場合は、既定でRuleBased organizerへ自動フォールバックします。
 
-APIキーはチャット、GitHub、`appsettings.json`へ貼らず、Google AI Studioで発行した未露出のキーをUser Secretsへ入力してください。PowerShellのコマンド履歴へキー本体を残さない設定例:
+APIキーはチャット、GitHub、`appsettings.json`へ貼らず、Google AI Studioで発行した未露出のキーをUser Secretsへ入力してください。PowerShellの入力と成功メッセージへキー本体を表示しない設定例:
 
 ```powershell
 $project = "src/TaskCapture.Api/TaskCapture.Api.csproj"
-$geminiKey = Read-Host "Gemini API key"
-dotnet user-secrets set "TaskOrganization:Gemini:ApiKey" $geminiKey --project $project
-Remove-Variable geminiKey
-dotnet user-secrets set "TaskOrganization:Mode" "Gemini" --project $project
-dotnet user-secrets set "TaskOrganization:Gemini:Model" "gemini-3.5-flash" --project $project
+$secureKey = Read-Host "Gemini API key" -AsSecureString
+$geminiKey = [System.Net.NetworkCredential]::new("", $secureKey).Password
+dotnet user-secrets set "TaskOrganization:Gemini:ApiKey" $geminiKey --project $project | Out-Null
+dotnet user-secrets set "TaskOrganization:Mode" "Gemini" --project $project | Out-Null
+dotnet user-secrets set "TaskOrganization:Gemini:Model" "gemini-3.5-flash" --project $project | Out-Null
+Remove-Variable secureKey,geminiKey
 ```
 
 配備先では `TaskOrganization__Gemini__ApiKey` または `GEMINI_API_KEY` をSecret Storeから設定します。`TaskOrganization__FallbackToRuleBased=false` にした場合だけ、Gemini失敗を整理APIのエラーとして扱います。将来のAzure OpenAI移行では、UI・DB・workflowを変えずに `ITaskOrganizer` 実装を追加します。
@@ -198,10 +199,9 @@ API と built SPA を端末から到達できる HTTPS URL に配置してくだ
 ## 現時点で未設定・未確認のもの
 
 - iPhone / iPad のカメラOCR・音声・clipboard と Windows tray/hotkey の実端末 QA
-- 失効・再発行したGemini APIキーによる実通信スモーク
 - HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視
 
-GitHubへの公開、ローカルSQL Server migration、SQL永続化、Asana限定projectへの実登録スモークは完了しています。Asana PATはローカルUser Secretsだけに保存され、リポジトリには含まれません。Gemini連携は実装・モックテスト済みで、チャットへ露出していない再発行キーによる実通信だけが未完了です。認証情報がなくても、Mock/RuleBased経路でMVP全フローを利用できます。
+GitHubへの公開、ローカルSQL Server migration、SQL永続化、Gemini構造化整理の実通信、Asana限定projectへの実登録スモークは完了しています。Gemini APIキーとAsana PATはローカルUser Secretsだけに保存され、リポジトリには含まれません。認証情報がなくても、Mock/RuleBased経路でMVP全フローを利用できます。
 
 ## ドキュメント
 

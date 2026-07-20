@@ -75,7 +75,7 @@
     <div class="inventory" data-group="all integration">
       <section class="section"><div class="section-title"><h2>Integration boundary</h2><span>設定で差し替え</span></div><div class="cards">
         <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>POST /api/1.0/tasks。PATはAPI設定のみ。</p></div></div>
-        <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで候補化。キー未設定・失敗時はRuleBasedへ戻る。</p></div></div>
+        <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで候補化。実通信確認済みで、失敗時はRuleBasedへ戻る。</p></div></div>
         <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
         <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
         <div class="card"><span class="icon">OS</span><div><strong>Clipboard / File / OCR / Speech</strong><p>議事録と画像はブラウザー内で文字化し、画像本体はAPIへ送らない。</p></div></div>
@@ -91,15 +91,13 @@
     <div class="inventory" data-group="all risk">
       <section class="section"><div class="section-title"><h2>Known risks / unknowns</h2><span>事実と分離</span></div><div class="cards">
         <div class="card risk critical"><span class="icon">!</span><div><strong>本格認証なし</strong><p>外部公開前に組織認証、TLS、rate limitが必要。</p></div></div>
-        <div class="card risk"><span class="icon">?</span><div><strong>Gemini実通信待ち</strong><p>実装とモックテストは完了。露出キーを失効・再発行して実APIスモークが必要。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>実連携検証はローカル限定</strong><p>SQL ServerとAsana限定projectへの実登録は成功。HTTPS配備と運用監視は未検証。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>OCR初回モデル取得</strong><p>初回のみ日本語モデル取得が必要。精度は画像品質に依存し、確認・修正を前提とする。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
-        <div class="card"><span class="icon">1</span><div><strong>Gemini実通信</strong><p>再発行キーをUser Secretsへ設定し、候補生成を1件スモーク。</p></div></div>
-        <div class="card"><span class="icon">2</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
-        <div class="card"><span class="icon">3</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
+        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
       </div></section>
     </div>
     <div class="footer-note">Machine-readable inventory: <strong>docs/architecture.json</strong> · Maintenance guide: <strong>docs/architecture_readme.md</strong> · 未確認事項は risks_or_unknowns にのみ記録します。</div>
