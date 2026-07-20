@@ -14,7 +14,8 @@ public sealed class GeminiTaskOrganizerTests
               "title": "月次報告書を確認する",
               "description": "月次報告書の数値とコメントを確認する。",
               "assignee": "田中さん",
-              "dueDate": "2026-07-21"
+              "dueDate": "2026-07-21",
+              "subtasks": ["数値を確認する", "コメントを確認する"]
             }
             """);
         var clock = new FrozenTimeProvider(new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero));
@@ -28,7 +29,9 @@ public sealed class GeminiTaskOrganizerTests
         Assert.Equal("月次報告書の数値とコメントを確認する。", result.Description);
         Assert.Equal("田中さん", result.Assignee);
         Assert.Equal(new DateOnly(2026, 7, 21), result.DueDate);
+        Assert.Equal(["数値を確認する", "コメントを確認する"], result.Subtasks);
         Assert.Contains("2026-07-20", client.SystemInstruction);
+        Assert.Contains("カレーを作る", client.SystemInstruction);
     }
 
     [Fact]
@@ -36,7 +39,7 @@ public sealed class GeminiTaskOrganizerTests
     {
         var client = new StubGeminiTaskClient(
             """
-            {"title":"確認する","description":"","assignee":null,"dueDate":"明日"}
+            {"title":"確認する","description":"","assignee":null,"dueDate":"明日","subtasks":["確認する","確認する",""]}
             """);
         var organizer = new GeminiTaskOrganizer(client, TimeProvider.System);
 
@@ -45,6 +48,7 @@ public sealed class GeminiTaskOrganizerTests
         Assert.Equal("原文を保持する", result.Description);
         Assert.Null(result.Assignee);
         Assert.Null(result.DueDate);
+        Assert.Single(result.Subtasks);
     }
 
     [Fact]

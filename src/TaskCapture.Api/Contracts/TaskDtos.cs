@@ -17,6 +17,7 @@ public sealed class CandidateUpdateRequest : IValidatableObject
     [StringLength(10_000)] public string Description { get; init; } = string.Empty;
     [StringLength(200)] public string? Assignee { get; init; }
     public DateOnly? DueDate { get; init; }
+    public IReadOnlyList<string> Subtasks { get; init; } = [];
     [RegularExpression("^[0-9]{1,64}$")] public string? ProjectGid { get; init; }
     [RegularExpression("^[0-9]{1,64}$")] public string? SectionGid { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = [];
@@ -40,6 +41,12 @@ public sealed class CandidateUpdateRequest : IValidatableObject
         {
             yield return new ValidationResult("CustomFields must contain at most 50 numeric GID keys and 500-character values.", [nameof(CustomFields)]);
         }
+
+        if (Subtasks is null || Subtasks.Count > 10 || Subtasks.Any(subtask =>
+                string.IsNullOrWhiteSpace(subtask) || subtask.Trim().Length > 200))
+        {
+            yield return new ValidationResult("Subtasks must contain at most 10 non-empty titles of 200 characters or fewer.", [nameof(Subtasks)]);
+        }
     }
 }
 
@@ -50,6 +57,7 @@ public sealed record TaskCandidateResponse(
     string Description,
     string? Assignee,
     DateOnly? DueDate,
+    IReadOnlyList<string> Subtasks,
     string? ProjectGid,
     string? SectionGid,
     IReadOnlyList<string> Tags,
@@ -63,6 +71,16 @@ public sealed record RegistrationResponse(
     Guid TaskCandidateId,
     bool Succeeded,
     bool AlreadyRegistered,
+    string Provider,
+    string? ExternalTaskGid,
+    string? ExternalTaskUrl,
+    string? ErrorMessage,
+    IReadOnlyList<SubtaskRegistrationResponse> Subtasks);
+
+public sealed record SubtaskRegistrationResponse(
+    Guid TaskCandidateSubtaskId,
+    string Title,
+    bool Succeeded,
     string Provider,
     string? ExternalTaskGid,
     string? ExternalTaskUrl,

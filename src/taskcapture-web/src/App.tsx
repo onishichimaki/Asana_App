@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 type InputSource = 'text' | 'paste' | 'voice' | 'clipboard' | 'launcher' | 'image' | 'minutes'
-type TaskCandidate = { id: string; taskRequestId: string; title: string; description: string; assignee: string | null; dueDate: string | null; projectGid: string | null; sectionGid: string | null; tags: string[]; customFields: Record<string, string>; priority: string | null }
-type CandidateDraft = TaskCandidate & { tagsText: string; customFieldsText: string }
+type TaskCandidate = { id: string; taskRequestId: string; title: string; description: string; assignee: string | null; dueDate: string | null; subtasks: string[]; projectGid: string | null; sectionGid: string | null; tags: string[]; customFields: Record<string, string>; priority: string | null }
+type CandidateDraft = TaskCandidate & { subtasksText: string; tagsText: string; customFieldsText: string }
 type OrganizeResponse = { taskRequestId: string; status: string; candidate: TaskCandidate }
-type RegistrationResponse = { registrationId: string; taskCandidateId: string; succeeded: boolean; alreadyRegistered: boolean; provider: string; externalTaskGid: string | null; externalTaskUrl: string | null; errorMessage: string | null }
+type SubtaskRegistrationResponse = { taskCandidateSubtaskId: string; title: string; succeeded: boolean; provider: string; externalTaskGid: string | null; externalTaskUrl: string | null; errorMessage: string | null }
+type RegistrationResponse = { registrationId: string; taskCandidateId: string; succeeded: boolean; alreadyRegistered: boolean; provider: string; externalTaskGid: string | null; externalTaskUrl: string | null; errorMessage: string | null; subtasks: SubtaskRegistrationResponse[] }
 type HealthResponse = { status: string; database: string; organizer: string; asana: string }
 type ImportStatus = { kind: 'clipboard' | 'image' | 'minutes' | 'voice'; text: string; progress?: number }
 type SpeechRecognitionEventLike = { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>; resultIndex: number }
@@ -52,7 +53,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function toDraft(candidate: TaskCandidate): CandidateDraft {
-  return { ...candidate, tagsText: candidate.tags.join(', '), customFieldsText: Object.keys(candidate.customFields).length ? JSON.stringify(candidate.customFields, null, 2) : '' }
+  return { ...candidate, subtasksText: candidate.subtasks.join('\n'), tagsText: candidate.tags.join(', '), customFieldsText: Object.keys(candidate.customFields).length ? JSON.stringify(candidate.customFields, null, 2) : '' }
+}
+
+function parseSubtasks(value: string) {
+  return Array.from(new Set(value.split('\n').map((subtask) => subtask.trim()).filter(Boolean)))
 }
 
 function candidatePayload(candidate: CandidateDraft) {
@@ -64,6 +69,7 @@ function candidatePayload(candidate: CandidateDraft) {
   }
   return {
     title: candidate.title.trim(), description: candidate.description.trim(), assignee: candidate.assignee?.trim() || null,
+    subtasks: parseSubtasks(candidate.subtasksText),
     dueDate: candidate.dueDate || null, projectGid: candidate.projectGid?.trim() || null, sectionGid: candidate.sectionGid?.trim() || null,
     tags: candidate.tagsText.split(',').map((tag) => tag.trim()).filter(Boolean), customFields, priority: candidate.priority || null,
   }
@@ -366,6 +372,10 @@ function App() {
           <div className="field"><label htmlFor="candidate-assignee">担当者</label><input id="candidate-assignee" value={candidate.assignee ?? ''} maxLength={200} placeholder="名前 / me / Asana GID" onChange={(event) => setDraftField('assignee', event.target.value)} /></div>
           <div className="field"><label htmlFor="candidate-due">期限</label><input id="candidate-due" type="date" value={candidate.dueDate ?? ''} onChange={(event) => setDraftField('dueDate', event.target.value || null)} /></div>
         </div>
+        <div className="field full-field subtask-field">
+          <div className="subtask-label-row"><label htmlFor="candidate-subtasks">サブタスク</label><span>{parseSubtasks(candidate.subtasksText).length}件</span></div>
+          <textarea id="candidate-subtasks" value={candidate.subtasksText} maxLength={2_000} rows={isLauncher ? 4 : 5} placeholder={'1行に1件ずつ入力\n例：冷蔵庫の食材を確認する'} onChange={(event) => setDraftField('subtasksText', event.target.value)} />
+        </div>
         <details className="advanced"><summary>詳細設定</summary><div className="advanced-grid">
           <div className="field"><label htmlFor="project-gid">プロジェクト GID</label><input id="project-gid" inputMode="numeric" value={candidate.projectGid ?? ''} onChange={(event) => setDraftField('projectGid', event.target.value)} /></div>
           <div className="field"><label htmlFor="section-gid">セクション GID</label><input id="section-gid" inputMode="numeric" value={candidate.sectionGid ?? ''} onChange={(event) => setDraftField('sectionGid', event.target.value)} /></div>
@@ -376,7 +386,7 @@ function App() {
         <button type="button" className="asana-button" onClick={register} disabled={busy !== null || Boolean(registration)}>{busy === 'register' ? <span className="spinner" aria-hidden="true" /> : <span className="check" aria-hidden="true">✓</span>}{busy === 'register' ? '登録しています…' : registration ? '登録済み' : 'この内容でAsanaへ登録'}</button>
       </section>}
 
-      {registration && <section className="success-card" aria-live="polite"><div className="success-icon" aria-hidden="true">✓</div><div><strong>{registration.provider === 'Mock' ? 'モックへ登録しました' : 'Asanaへ登録しました'}</strong><p>{registration.externalTaskGid ? `Task ID: ${registration.externalTaskGid}` : '登録履歴を保存しました。'}</p>{registration.externalTaskUrl && <a href={registration.externalTaskUrl} target="_blank" rel="noreferrer">Asanaで確認する ↗</a>}</div><button type="button" onClick={reset}>続けて登録</button></section>}
+      {registration && <section className="success-card" aria-live="polite"><div className="success-icon" aria-hidden="true">✓</div><div><strong>{registration.provider === 'Mock' ? 'モックへ登録しました' : 'Asanaへ登録しました'}</strong><p>{registration.externalTaskGid ? `Task ID: ${registration.externalTaskGid}` : '登録履歴を保存しました。'}{registration.subtasks.length > 0 ? ` / サブタスク ${registration.subtasks.filter((item) => item.succeeded).length}件` : ''}</p>{registration.externalTaskUrl && <a href={registration.externalTaskUrl} target="_blank" rel="noreferrer">Asanaで確認する ↗</a>}</div><button type="button" onClick={reset}>続けて登録</button></section>}
       {message && <div className="error-message" role="alert"><span aria-hidden="true">!</span>{message}</div>}
       <footer><button type="button" onClick={reset} disabled={!rawText && !candidate}>入力をクリア</button></footer>
     </main>

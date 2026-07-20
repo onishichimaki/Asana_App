@@ -44,7 +44,14 @@ public sealed class TaskWorkflowService(
                 Assignee = organized.Assignee,
                 DueDate = organized.DueDate,
                 CreatedAtUtc = now,
-                UpdatedAtUtc = now
+                UpdatedAtUtc = now,
+                Subtasks = organized.Subtasks.Select((title, index) => new TaskCandidateSubtask
+                {
+                    Title = title,
+                    SortOrder = index,
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                }).ToList()
             };
             request.Status = "Organized";
             request.UpdatedAtUtc = now;
@@ -70,7 +77,9 @@ public sealed class TaskWorkflowService(
         string correlationId,
         CancellationToken cancellationToken)
     {
-        var candidate = await db.TaskCandidates.Include(x => x.TaskRequest)
+        var candidate = await db.TaskCandidates
+            .Include(x => x.TaskRequest)
+            .Include(x => x.Subtasks)
             .SingleOrDefaultAsync(x => x.Id == candidateId, cancellationToken)
             ?? throw new KeyNotFoundException("Task candidate was not found.");
         ApplyUpdate(candidate, input);
@@ -89,60 +98,99 @@ public sealed class TaskWorkflowService(
         var candidate = await db.TaskCandidates
             .Include(x => x.TaskRequest)
             .Include(x => x.Registrations)
+            .Include(x => x.Subtasks).ThenInclude(x => x.Registrations)
             .SingleOrDefaultAsync(x => x.Id == candidateId, cancellationToken)
             ?? throw new KeyNotFoundException("Task candidate was not found.");
 
-        var successful = candidate.Registrations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault(x => x.Succeeded);
-        if (successful is not null) return ToResponse(successful, true);
+        var parentRegistration = candidate.Registrations
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefault(x => x.Succeeded);
+        var alreadyComplete = parentRegistration is not null && candidate.Subtasks.All(HasSuccessfulRegistration);
+        if (alreadyComplete) return ToResponse(parentRegistration!, true, candidate.Subtasks, true);
 
-        ApplyUpdate(candidate, input);
-        candidate.TaskRequest.Status = "Registering";
-        candidate.TaskRequest.UpdatedAtUtc = candidate.UpdatedAtUtc;
-        await db.SaveChangesAsync(cancellationToken);
-
-        AsanaRegistrationResult result;
-        try
+        if (parentRegistration is null)
         {
-            result = await asanaTaskService.CreateTaskAsync(candidate, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            result = new AsanaRegistrationResult(false, "Configuration", null, null, "INTEGRATION_ERROR", SafeMessage(ex.Message));
+            ApplyUpdate(candidate, input);
+            candidate.TaskRequest.Status = "Registering";
+            candidate.TaskRequest.UpdatedAtUtc = candidate.UpdatedAtUtc;
+            await db.SaveChangesAsync(cancellationToken);
+
+            var parentResult = await CreateParentSafelyAsync(candidate, cancellationToken);
+            var parentNow = timeProvider.GetUtcNow();
+            parentRegistration = new AsanaRegistration
+            {
+                TaskCandidateId = candidate.Id,
+                Succeeded = parentResult.Succeeded,
+                Provider = parentResult.Provider,
+                ExternalTaskGid = parentResult.ExternalTaskGid,
+                ExternalTaskUrl = parentResult.ExternalTaskUrl,
+                ErrorCode = parentResult.ErrorCode,
+                ErrorMessage = SafeMessage(parentResult.ErrorMessage),
+                CreatedAtUtc = parentNow
+            };
+            db.AsanaRegistrations.Add(parentRegistration);
+            await db.SaveChangesAsync(cancellationToken);
+
+            if (!parentRegistration.Succeeded || string.IsNullOrWhiteSpace(parentRegistration.ExternalTaskGid))
+            {
+                candidate.TaskRequest.Status = "Failed";
+                candidate.TaskRequest.ErrorMessage = parentRegistration.ErrorMessage;
+                candidate.TaskRequest.UpdatedAtUtc = parentNow;
+                AddAudit(candidate.TaskRequest.UserId, "AsanaRegistrationFailed", "TaskCandidate", candidate.Id,
+                    parentRegistration.ErrorMessage, correlationId, parentNow, "Error");
+                await db.SaveChangesAsync(cancellationToken);
+                return ToResponse(parentRegistration, false, candidate.Subtasks, false);
+            }
         }
 
+        foreach (var subtask in candidate.Subtasks.OrderBy(x => x.SortOrder))
+        {
+            if (HasSuccessfulRegistration(subtask)) continue;
+            var result = await CreateSubtaskSafelyAsync(candidate, subtask, parentRegistration.ExternalTaskGid!, cancellationToken);
+            db.AsanaSubtaskRegistrations.Add(new AsanaSubtaskRegistration
+            {
+                TaskCandidateSubtaskId = subtask.Id,
+                Succeeded = result.Succeeded,
+                Provider = result.Provider,
+                ExternalTaskGid = result.ExternalTaskGid,
+                ExternalTaskUrl = result.ExternalTaskUrl,
+                ErrorCode = result.ErrorCode,
+                ErrorMessage = SafeMessage(result.ErrorMessage),
+                CreatedAtUtc = timeProvider.GetUtcNow()
+            });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var allSubtasksSucceeded = candidate.Subtasks.All(HasSuccessfulRegistration);
         var now = timeProvider.GetUtcNow();
-        var registration = new AsanaRegistration
-        {
-            TaskCandidateId = candidate.Id,
-            Succeeded = result.Succeeded,
-            Provider = result.Provider,
-            ExternalTaskGid = result.ExternalTaskGid,
-            ExternalTaskUrl = result.ExternalTaskUrl,
-            ErrorCode = result.ErrorCode,
-            ErrorMessage = SafeMessage(result.ErrorMessage),
-            CreatedAtUtc = now
-        };
-        db.AsanaRegistrations.Add(registration);
-        candidate.TaskRequest.Status = result.Succeeded ? "Registered" : "Failed";
-        candidate.TaskRequest.ErrorMessage = result.Succeeded ? null : registration.ErrorMessage;
+        var firstSubtaskError = candidate.Subtasks
+            .Where(subtask => !HasSuccessfulRegistration(subtask))
+            .SelectMany(x => x.Registrations)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefault(x => !x.Succeeded)?.ErrorMessage;
+        candidate.TaskRequest.Status = allSubtasksSucceeded ? "Registered" : "PartiallyRegistered";
+        candidate.TaskRequest.ErrorMessage = allSubtasksSucceeded ? null : firstSubtaskError;
         candidate.TaskRequest.UpdatedAtUtc = now;
         AddAudit(
             candidate.TaskRequest.UserId,
-            result.Succeeded ? "AsanaRegistrationSucceeded" : "AsanaRegistrationFailed",
+            allSubtasksSucceeded ? "AsanaRegistrationSucceeded" : "AsanaSubtaskRegistrationFailed",
             "TaskCandidate",
             candidate.Id,
-            result.Succeeded ? $"Provider={result.Provider}; Gid={result.ExternalTaskGid}" : registration.ErrorMessage,
+            allSubtasksSucceeded
+                ? $"Provider={parentRegistration.Provider}; Gid={parentRegistration.ExternalTaskGid}; Subtasks={candidate.Subtasks.Count}"
+                : firstSubtaskError,
             correlationId,
             now,
-            result.Succeeded ? "Information" : "Error");
+            allSubtasksSucceeded ? "Information" : "Error");
         await db.SaveChangesAsync(cancellationToken);
-        return ToResponse(registration, false);
+        return ToResponse(parentRegistration, false, candidate.Subtasks, allSubtasksSucceeded, firstSubtaskError);
     }
 
     public async Task<IReadOnlyList<RecentTaskResponse>> GetRecentAsync(int take, CancellationToken cancellationToken)
     {
         var rows = await db.TaskRequests.AsNoTracking()
             .Include(x => x.Candidates).ThenInclude(x => x.Registrations)
+            .Include(x => x.Candidates).ThenInclude(x => x.Subtasks).ThenInclude(x => x.Registrations)
             .OrderByDescending(x => x.CreatedAtUtc)
             .Take(Math.Clamp(take, 1, 20))
             .ToListAsync(cancellationToken);
@@ -158,7 +206,9 @@ public sealed class TaskWorkflowService(
                 request.Status,
                 request.CreatedAtUtc,
                 candidate is null ? null : ToResponse(candidate),
-                registration is null ? null : ToResponse(registration, false));
+                registration is null || candidate is null
+                    ? null
+                    : ToResponse(registration, false, candidate.Subtasks, candidate.Subtasks.All(HasSuccessfulRegistration)));
         }).ToList();
     }
 
@@ -186,6 +236,70 @@ public sealed class TaskWorkflowService(
         candidate.CustomFieldsJson = JsonSerializer.Serialize(input.CustomFields, JsonOptions);
         candidate.Priority = NullIfWhiteSpace(input.Priority);
         candidate.UpdatedAtUtc = timeProvider.GetUtcNow();
+        var normalizedSubtasks = input.Subtasks
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Take(10)
+            .ToArray();
+        var existingSubtasks = candidate.Subtasks.OrderBy(x => x.SortOrder).ToArray();
+        var retainedCount = Math.Min(existingSubtasks.Length, normalizedSubtasks.Length);
+        for (var index = 0; index < retainedCount; index++)
+        {
+            existingSubtasks[index].Title = normalizedSubtasks[index];
+            existingSubtasks[index].SortOrder = index;
+            existingSubtasks[index].UpdatedAtUtc = candidate.UpdatedAtUtc;
+        }
+
+        foreach (var removed in existingSubtasks.Skip(normalizedSubtasks.Length))
+        {
+            db.TaskCandidateSubtasks.Remove(removed);
+            candidate.Subtasks.Remove(removed);
+        }
+
+        for (var index = existingSubtasks.Length; index < normalizedSubtasks.Length; index++)
+        {
+            var subtask = new TaskCandidateSubtask
+            {
+                TaskCandidateId = candidate.Id,
+                Title = normalizedSubtasks[index],
+                SortOrder = index,
+                CreatedAtUtc = candidate.UpdatedAtUtc,
+                UpdatedAtUtc = candidate.UpdatedAtUtc
+            };
+            db.TaskCandidateSubtasks.Add(subtask);
+            candidate.Subtasks.Add(subtask);
+        }
+    }
+
+    private async Task<AsanaRegistrationResult> CreateParentSafelyAsync(
+        TaskCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await asanaTaskService.CreateTaskAsync(candidate, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new AsanaRegistrationResult(false, "Configuration", null, null, "INTEGRATION_ERROR", SafeMessage(ex.Message));
+        }
+    }
+
+    private async Task<AsanaRegistrationResult> CreateSubtaskSafelyAsync(
+        TaskCandidate candidate,
+        TaskCandidateSubtask subtask,
+        string parentTaskGid,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await asanaTaskService.CreateSubtaskAsync(candidate, subtask, parentTaskGid, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new AsanaRegistrationResult(false, "Configuration", null, null, "INTEGRATION_ERROR", SafeMessage(ex.Message));
+        }
     }
 
     private void AddAudit(Guid? userId, string eventType, string entityType, Guid entityId, string? detail, string correlationId, DateTimeOffset now, string level = "Information")
@@ -210,21 +324,43 @@ public sealed class TaskWorkflowService(
         candidate.Description,
         candidate.Assignee,
         candidate.DueDate,
+        candidate.Subtasks.OrderBy(x => x.SortOrder).Select(x => x.Title).ToArray(),
         candidate.ProjectGid,
         candidate.SectionGid,
         JsonSerializer.Deserialize<string[]>(candidate.TagsJson, JsonOptions) ?? [],
         JsonSerializer.Deserialize<Dictionary<string, string>>(candidate.CustomFieldsJson, JsonOptions) ?? [],
         candidate.Priority);
 
-    private static RegistrationResponse ToResponse(AsanaRegistration registration, bool alreadyRegistered) => new(
+    private static RegistrationResponse ToResponse(
+        AsanaRegistration registration,
+        bool alreadyRegistered,
+        IEnumerable<TaskCandidateSubtask> subtasks,
+        bool succeeded,
+        string? errorMessage = null) => new(
         registration.Id,
         registration.TaskCandidateId,
-        registration.Succeeded,
+        succeeded,
         alreadyRegistered,
         registration.Provider,
         registration.ExternalTaskGid,
         registration.ExternalTaskUrl,
-        registration.ErrorMessage);
+        errorMessage ?? registration.ErrorMessage,
+        subtasks.OrderBy(x => x.SortOrder).Select(subtask =>
+        {
+            var result = subtask.Registrations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault(x => x.Succeeded)
+                ?? subtask.Registrations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault();
+            return new SubtaskRegistrationResponse(
+                subtask.Id,
+                subtask.Title,
+                result?.Succeeded ?? false,
+                result?.Provider ?? registration.Provider,
+                result?.ExternalTaskGid,
+                result?.ExternalTaskUrl,
+                result?.ErrorMessage);
+        }).ToArray());
+
+    private static bool HasSuccessfulRegistration(TaskCandidateSubtask subtask) =>
+        subtask.Registrations.Any(x => x.Succeeded);
 
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string? SafeMessage(string? value) => string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 1_000)];

@@ -3,7 +3,12 @@ using System.Text.RegularExpressions;
 
 namespace TaskCapture.Api.Services;
 
-public sealed record OrganizedTask(string Title, string Description, string? Assignee, DateOnly? DueDate);
+public sealed record OrganizedTask(
+    string Title,
+    string Description,
+    string? Assignee,
+    DateOnly? DueDate,
+    IReadOnlyList<string> Subtasks);
 
 public interface ITaskOrganizer
 {
@@ -20,7 +25,8 @@ public sealed partial class RuleBasedTaskOrganizer(TimeProvider timeProvider) : 
             CreateTitle(normalized),
             normalized,
             ExtractAssignee(normalized),
-            ExtractDueDate(normalized)));
+            ExtractDueDate(normalized),
+            ExtractSubtasks(normalized)));
     }
 
     private static string CreateTitle(string text)
@@ -66,6 +72,18 @@ public sealed partial class RuleBasedTaskOrganizer(TimeProvider timeProvider) : 
         return hasYear ? parsed : new DateOnly(today.Year, parsed.Month, parsed.Day);
     }
 
+    private static IReadOnlyList<string> ExtractSubtasks(string text) => text
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Skip(1)
+        .Select(line => SubtaskBulletRegex().Match(line))
+        .Where(match => match.Success)
+        .Select(match => match.Groups["value"].Value.Trim())
+        .Where(value => value.Length > 0)
+        .Select(value => value.Length <= 200 ? value : value[..200].TrimEnd())
+        .Distinct(StringComparer.Ordinal)
+        .Take(10)
+        .ToArray();
+
     private static TimeZoneInfo ResolveJapanTimeZone()
     {
         try { return TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"); }
@@ -89,4 +107,7 @@ public sealed partial class RuleBasedTaskOrganizer(TimeProvider timeProvider) : 
 
     [GeneratedRegex(@"(?:(?:期限|締切|期日)\s*[:：]?\s*)?(?<date>(?:\d{4}[/\-.])?\d{1,2}[/\-.]\d{1,2})")]
     private static partial Regex AbsoluteDateRegex();
+
+    [GeneratedRegex(@"^\s*[-*・●○□■]\s*(?<value>.+)$")]
+    private static partial Regex SubtaskBulletRegex();
 }

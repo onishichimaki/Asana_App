@@ -18,11 +18,27 @@ public sealed record AsanaRegistrationResult(
 public interface IAsanaTaskService
 {
     Task<AsanaRegistrationResult> CreateTaskAsync(TaskCandidate candidate, CancellationToken cancellationToken);
+    Task<AsanaRegistrationResult> CreateSubtaskAsync(
+        TaskCandidate candidate,
+        TaskCandidateSubtask subtask,
+        string parentTaskGid,
+        CancellationToken cancellationToken);
 }
 
 public sealed class MockAsanaTaskService : IAsanaTaskService
 {
     public Task<AsanaRegistrationResult> CreateTaskAsync(TaskCandidate candidate, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var gid = $"mock-{Guid.NewGuid():N}";
+        return Task.FromResult(new AsanaRegistrationResult(true, "Mock", gid, null));
+    }
+
+    public Task<AsanaRegistrationResult> CreateSubtaskAsync(
+        TaskCandidate candidate,
+        TaskCandidateSubtask subtask,
+        string parentTaskGid,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var gid = $"mock-{Guid.NewGuid():N}";
@@ -86,7 +102,53 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
         var customFields = JsonSerializer.Deserialize<Dictionary<string, string>>(candidate.CustomFieldsJson) ?? [];
         if (customFields.Count > 0) data["custom_fields"] = customFields;
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "tasks")
+        return await SendCreateAsync(
+            "tasks",
+            data,
+            "Asana rejected the task registration. Check server logs and integration settings.",
+            cancellationToken);
+    }
+
+    public async Task<AsanaRegistrationResult> CreateSubtaskAsync(
+        TaskCandidate candidate,
+        TaskCandidateSubtask subtask,
+        string parentTaskGid,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.PersonalAccessToken))
+        {
+            throw new InvalidOperationException("Asana API mode requires Integration:Asana:PersonalAccessToken.");
+        }
+
+        if (string.IsNullOrWhiteSpace(parentTaskGid))
+        {
+            throw new ArgumentException("A parent Asana task GID is required.", nameof(parentTaskGid));
+        }
+
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = subtask.Title,
+            ["due_on"] = candidate.DueDate?.ToString("yyyy-MM-dd")
+        };
+        if (candidate.Assignee is "me" || (candidate.Assignee?.All(char.IsDigit) ?? false))
+        {
+            data["assignee"] = candidate.Assignee;
+        }
+
+        return await SendCreateAsync(
+            $"tasks/{Uri.EscapeDataString(parentTaskGid)}/subtasks",
+            data,
+            "Asana rejected a subtask registration. Check server logs and integration settings.",
+            cancellationToken);
+    }
+
+    private async Task<AsanaRegistrationResult> SendCreateAsync(
+        string requestUri,
+        IReadOnlyDictionary<string, object?> data,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, requestUri)
         {
             Content = JsonContent.Create(new { data })
         };
@@ -102,7 +164,7 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
                 null,
                 null,
                 $"HTTP_{(int)response.StatusCode}",
-                "Asana rejected the task registration. Check server logs and integration settings.");
+                failureMessage);
         }
 
         using var document = JsonDocument.Parse(body);

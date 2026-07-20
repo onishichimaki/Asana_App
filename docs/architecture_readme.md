@@ -27,4 +27,4 @@ print("html_parse_ok")
 '@ | python -
 ```
 
-DBスキーマ変更時は EF Core migration、ルート `ARCHITECTURE.md`、この3ファイルを同じ変更で更新する。AI providerまたはフォールバックを変更した場合も、`external_integrations`、`dependencies`、`organize_flow`、リスクを同期する。
+DBスキーマ変更時は EF Core migration、ルート `ARCHITECTURE.md`、この3ファイルを同じ変更で更新する。親子登録のように複数の外部要求をまたぐ処理では、テーブル関係、部分成功状態、冪等な再試行を `registration_flow` とリスクにも記録する。AI provider、構造化出力、フォールバックを変更した場合は、`external_integrations`、`dependencies`、`organize_flow`、リスクを同期する。

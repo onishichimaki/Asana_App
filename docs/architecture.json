@@ -1,12 +1,12 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "メイリオUI優先のReact 1画面でテキスト、議事録、画像OCR、音声を取り込み、整理・確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "メイリオUI優先のReact 1画面でテキスト、議事録、画像OCR、音声を取り込み、親タスクとサブタスク候補へ整理・確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが親子の履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
       "name": "Responsive Web UI",
       "type": "React SPA",
-      "responsibility": "メイリオUIを優先し、テキスト、貼り付け、議事録ファイル、ブラウザー内画像OCR、Web Speech API入力と候補確認・修正・登録を1画面で提供する。",
+      "responsibility": "メイリオUIを優先し、テキスト、貼り付け、議事録ファイル、ブラウザー内画像OCR、Web Speech API入力と親タスク・サブタスク候補の確認・修正・登録を1画面で提供する。",
       "main_inputs": ["利用者テキスト", "TXT/MD/CSV", "JPEG/PNG/WebP", "音声", "launcher clipboard message", "API response"],
       "main_outputs": ["organize request", "candidate update", "registration request"],
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
@@ -24,7 +24,7 @@
       "id": "task_workflow",
       "name": "Task Workflow",
       "type": "Application service",
-      "responsibility": "入力保存、候補生成・更新、冪等な登録、状態遷移、監査記録を一貫して調停する。",
+      "responsibility": "入力保存、親子候補の生成・更新、親を先に作る冪等な登録、部分失敗後の再開、状態遷移、監査記録を一貫して調停する。",
       "main_inputs": ["validated DTO", "client key", "correlation id"],
       "main_outputs": ["candidate", "registration", "history and audit rows"],
       "source_files": ["src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Contracts/TaskDtos.cs"]
@@ -33,7 +33,7 @@
       "id": "task_organizer",
       "name": "Task Organizer",
       "type": "Replaceable domain service",
-      "responsibility": "設定でRuleBasedまたはGeminiを選び、入力からタイトル、内容、担当者、期限を抽出する。Gemini失敗時は既定でRuleBasedへフォールバックする。",
+      "responsibility": "設定でRuleBasedまたはGeminiを選び、入力からタイトル、内容、担当者、期限、サブタスク候補を抽出する。Gemini失敗時は既定でRuleBasedへフォールバックする。",
       "main_inputs": ["raw text", "current Japan date"],
       "main_outputs": ["OrganizedTask"],
       "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
@@ -42,7 +42,7 @@
       "id": "gemini_task_organizer",
       "name": "Gemini Task Organizer",
       "type": "AI provider adapter",
-      "responsibility": "Google Gen AI .NET SDKとJSON Schemaを使って候補1件を構造化し、JST基準日、最大長、nullable項目をOrganizedTaskへ安全に変換する。",
+      "responsibility": "Google Gen AI .NET SDKとJSON Schemaを使って親候補1件と必要な0〜6件の実行可能なサブタスクを構造化し、JST基準日、最大長、nullable項目をOrganizedTaskへ安全に変換する。",
       "main_inputs": ["raw text", "current Japan date", "server-side Gemini settings"],
       "main_outputs": ["structured JSON", "OrganizedTask", "safe provider exception"],
       "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs"]
@@ -51,7 +51,7 @@
       "id": "asana_integration",
       "name": "Asana Integration",
       "type": "External service adapter",
-      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。候補の明示project、既定project、既定workspaceの順で登録先を解決してタスクを作成する。",
+      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。候補の明示project、既定project、既定workspaceの順で登録先を解決し、親タスクとサブタスクを作成する。",
       "main_inputs": ["confirmed candidate", "server-side Asana settings"],
       "main_outputs": ["provider result", "external GID", "permalink or safe error"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
@@ -60,10 +60,10 @@
       "id": "persistence",
       "name": "Persistence",
       "type": "EF Core / SQL Server",
-      "responsibility": "6テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
+      "responsibility": "親子候補・登録結果を含む8テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
       "main_inputs": ["entities", "connection configuration"],
       "main_outputs": ["SQL Server rows", "migration DDL"],
-      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
+      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs"]
     },
     {
       "id": "windows_launcher",
@@ -80,14 +80,14 @@
       "id": "task_capture_screen",
       "name": "Task Capture 1画面",
       "type": "Responsive SPA screen",
-      "description": "貼り付け、議事録、画像OCR、音声の4入口と、整理、候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
+      "description": "貼り付け、議事録、画像OCR、音声の4入口と、整理、親子候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css"]
     },
     {
       "id": "launcher_webview_surface",
       "name": "Launcher WebView surface",
       "type": "Desktop host surface",
-      "description": "520x760を既定とする小型のWebView2 host。ネイティブ画面は持たずTask Capture SPAを再利用する。",
+      "description": "520x620を既定とする小型のWebView2 host。ネイティブ画面は持たずTask Capture SPAを再利用する。",
       "source_files": ["src/TaskCapture.Launcher/LauncherForm.cs", "src/taskcapture-web/src/App.tsx"]
     }
   ],
@@ -103,7 +103,7 @@
       "id": "organize_post",
       "name": "POST /api/task-requests/organize",
       "type": "HTTP POST",
-      "description": "1〜10,000文字の入力を保存し、1件の候補を生成する。",
+      "description": "1〜10,000文字の入力を保存し、親候補1件と0〜10件の編集可能なサブタスク候補を返す。Geminiの初期提案は0〜6件。",
       "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "src/TaskCapture.Api/Contracts/TaskDtos.cs"]
     },
     {
@@ -117,14 +117,14 @@
       "id": "candidate_put",
       "name": "PUT /api/task-candidates/{id}",
       "type": "HTTP PUT",
-      "description": "確認・修正した候補を登録せず保存する。",
+      "description": "確認・修正した親候補とサブタスクを登録せず保存する。",
       "source_files": ["src/TaskCapture.Api/Controllers/TaskCandidatesController.cs", "src/TaskCapture.Api/Contracts/TaskDtos.cs"]
     },
     {
       "id": "register_post",
       "name": "POST /api/task-candidates/{id}/register",
       "type": "HTTP POST",
-      "description": "候補の最終値を保存し、成功済み候補を二重登録せずAsana/Mockへ登録する。",
+      "description": "親子候補の最終値を保存し、親を作成後に子を登録する。部分失敗時は成功済みの親・子を二重登録せず未完了の子だけ再試行する。",
       "source_files": ["src/TaskCapture.Api/Controllers/TaskCandidatesController.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
     }
   ],
@@ -145,14 +145,26 @@
       {
         "id": "task_candidates",
         "name": "TaskCandidates",
-        "description": "タイトル、内容、担当者、期限と折りたたみ詳細設定を保持する。",
+        "description": "親タスクのタイトル、内容、担当者、期限と折りたたみ詳細設定を保持する。",
         "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/TaskCaptureDbContext.cs"]
+      },
+      {
+        "id": "task_candidate_subtasks",
+        "name": "TaskCandidateSubtasks",
+        "description": "利用者が確認・編集したサブタスクのタイトル、表示順、UTC時刻を親候補ごとに保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs"]
       },
       {
         "id": "asana_registrations",
         "name": "AsanaRegistrations",
-        "description": "Mock/Asana provider、成功、外部GID/URL、安全なエラー概要を試行ごとに保持する。",
+        "description": "親タスクのMock/Asana provider、成功、外部GID/URL、安全なエラー概要を試行ごとに保持する。",
         "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "asana_subtask_registrations",
+        "name": "AsanaSubtaskRegistrations",
+        "description": "各サブタスクのMock/Asana登録結果を試行ごとに保持し、成功済みの子を再試行から除外する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs"]
       },
       {
         "id": "application_settings",
@@ -183,7 +195,19 @@
       {
         "id": "candidate_registrations",
         "name": "TaskCandidates 1:N AsanaRegistrations",
-        "description": "失敗後の再試行履歴を保持し、成功後は二重登録を防ぐ。",
+        "description": "親タスクの失敗後の再試行履歴を保持し、成功後は二重登録を防ぐ。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "candidate_subtasks",
+        "name": "TaskCandidates 1:N TaskCandidateSubtasks",
+        "description": "確認済みサブタスクを表示順付きで親候補へ従属させる。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "subtask_registrations",
+        "name": "TaskCandidateSubtasks 1:N AsanaSubtaskRegistrations",
+        "description": "各子の試行履歴を保持し、部分成功後は失敗または未実行の子だけを再開する。",
         "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
       },
       {
@@ -215,15 +239,15 @@
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
-      "description": "POST /api/1.0/tasks。Bearer PATはサーバー設定だけから読み取る。",
+      "description": "親はPOST /api/1.0/tasks、子はPOST /api/1.0/tasks/{task_gid}/subtasks。Bearer PATはサーバー設定だけから読み取る。",
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/appsettings.json"]
     },
     {
       "id": "sql_server",
       "name": "SQL Server",
       "type": "Relational database",
-      "description": "EF Core SqlServer providerとInitialCreate migrationで本番履歴を保存する。",
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
+      "description": "EF Core SqlServer provider、InitialCreate、AddTaskCandidateSubtasks migrationで親子候補と外部登録履歴を保存する。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs"]
     },
     {
       "id": "browser_capture_apis",
@@ -245,16 +269,16 @@
       "id": "organize_flow",
       "name": "入力から候補",
       "inputs": ["text / paste / minutes / image OCR / voice / clipboard"],
-      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased or Gemini structured extraction", "RuleBased fallback on configured AI failure", "TaskCandidate and AuditLog save"],
-      "outputs": ["editable candidate"],
+      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased or Gemini structured extraction", "AI task decomposition when useful", "RuleBased fallback on configured AI failure", "TaskCandidate, TaskCandidateSubtasks and AuditLog save"],
+      "outputs": ["editable parent candidate", "editable ordered subtasks"],
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
     },
     {
       "id": "registration_flow",
       "name": "候補からAsana登録",
-      "inputs": ["confirmed candidate"],
-      "processing": ["DataAnnotations", "idempotency lookup", "Mock/Asana adapter", "registration and audit save"],
-      "outputs": ["external GID/URL or safe error"],
+      "inputs": ["confirmed parent candidate", "confirmed subtasks"],
+      "processing": ["DataAnnotations", "parent idempotency lookup", "parent create and save", "per-subtask idempotency lookup", "subtask create and save", "partial failure state and audit save"],
+      "outputs": ["parent and subtask external GIDs/URLs", "safe partial or full error"],
       "source_files": ["src/TaskCapture.Api/Contracts/TaskDtos.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
     },
     {
@@ -316,6 +340,12 @@
       "name": "画像OCRの初回モデル取得",
       "description": "初回OCR時にTesseract.jsの日本語言語モデル取得が必要。OCR精度は画像品質に依存するため、利用者が抽出結果と候補を修正できるUIを維持する。",
       "source_files": ["README.md", "src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
+    },
+    {
+      "id": "asana_parent_child_non_atomic",
+      "name": "Asana親子登録は非原子的",
+      "description": "親作成と各サブタスク作成は別HTTP要求で単一トランザクションにできない。各結果をSQL Serverへ逐次保存し、PartiallyRegisteredから未完了の子だけを再試行する。",
+      "source_files": ["src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "DECISIONS.md"]
     }
   ],
   "recommended_next_actions": [

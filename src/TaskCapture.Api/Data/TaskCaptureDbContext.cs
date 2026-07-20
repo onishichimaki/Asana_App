@@ -7,7 +7,9 @@ public sealed class TaskCaptureDbContext(DbContextOptions<TaskCaptureDbContext> 
     public DbSet<User> Users => Set<User>();
     public DbSet<TaskRequest> TaskRequests => Set<TaskRequest>();
     public DbSet<TaskCandidate> TaskCandidates => Set<TaskCandidate>();
+    public DbSet<TaskCandidateSubtask> TaskCandidateSubtasks => Set<TaskCandidateSubtask>();
     public DbSet<AsanaRegistration> AsanaRegistrations => Set<AsanaRegistration>();
+    public DbSet<AsanaSubtaskRegistration> AsanaSubtaskRegistrations => Set<AsanaSubtaskRegistration>();
     public DbSet<ApplicationSetting> ApplicationSettings => Set<ApplicationSetting>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -42,6 +44,22 @@ public sealed class TaskCaptureDbContext(DbContextOptions<TaskCaptureDbContext> 
             entity.HasIndex(x => x.TaskCandidateId);
             entity.HasIndex(x => x.ExternalTaskGid);
             entity.HasOne(x => x.TaskCandidate).WithMany(x => x.Registrations).HasForeignKey(x => x.TaskCandidateId);
+            entity.Property(x => x.CreatedAtUtc).HasPrecision(0);
+        });
+
+        modelBuilder.Entity<TaskCandidateSubtask>(entity =>
+        {
+            entity.HasIndex(x => new { x.TaskCandidateId, x.SortOrder });
+            entity.HasOne(x => x.TaskCandidate).WithMany(x => x.Subtasks).HasForeignKey(x => x.TaskCandidateId);
+            entity.Property(x => x.CreatedAtUtc).HasPrecision(0);
+            entity.Property(x => x.UpdatedAtUtc).HasPrecision(0);
+        });
+
+        modelBuilder.Entity<AsanaSubtaskRegistration>(entity =>
+        {
+            entity.HasIndex(x => x.TaskCandidateSubtaskId);
+            entity.HasIndex(x => x.ExternalTaskGid);
+            entity.HasOne(x => x.TaskCandidateSubtask).WithMany(x => x.Registrations).HasForeignKey(x => x.TaskCandidateSubtaskId);
             entity.Property(x => x.CreatedAtUtc).HasPrecision(0);
         });
 

@@ -73,6 +73,10 @@ textarea:focus,input:focus,select:focus { border-color:var(--accent); box-shadow
 .field label strong { margin-left:5px; color:var(--accent); font-size:.67rem; }
 .field small { color:var(--muted); font-size:.7rem; line-height:1.5; }
 .full-field { grid-column:1/-1; }
+.subtask-field { margin-top:12px; padding:11px; border:1px solid #d9e2ff; border-radius:10px; background:#f8faff; }
+.subtask-label-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.subtask-label-row span { color:var(--accent); font-size:.7rem; font-weight:700; }
+.subtask-field textarea { margin-top:2px; background:#fff; }
 .advanced { margin-top:14px; border-top:1px solid var(--line); }
 .advanced summary { padding:12px 3px 0; color:#465266; cursor:pointer; font-size:.8rem; font-weight:700; }
 .advanced-grid { margin-top:12px; }
