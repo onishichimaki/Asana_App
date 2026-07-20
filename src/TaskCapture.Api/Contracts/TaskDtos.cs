@@ -7,7 +7,7 @@ public sealed class OrganizeTaskRequest
     [Required, StringLength(10_000, MinimumLength = 1)]
     public string RawText { get; init; } = string.Empty;
 
-    [Required, RegularExpression("^(text|paste|voice|clipboard|launcher)$")]
+    [Required, RegularExpression("^(text|paste|voice|clipboard|launcher|image|minutes)$")]
     public string Source { get; init; } = "text";
 }
 

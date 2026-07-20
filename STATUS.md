@@ -9,8 +9,10 @@
 
 ## 完了
 
-- React のレスポンシブ1画面（入力 → 整理 → 確認・修正 → 登録）
+- メイリオUI優先のReactレスポンシブ1画面（入力 → 整理 → 確認・修正 → 登録）
 - 通常貼り付け、Clipboard API、Web Speech API 日本語音声入力と非対応フォールバック
+- UTF-8/Shift_JISの `.txt/.md/.csv` 議事録読込
+- JPEG/PNG/WebPの選択・撮影・貼り付けと、Tesseract.jsによるブラウザー内日本語OCR
 - ASP.NET Core API、DataAnnotations、Problem Details、CORS、SPA 配信
 - RuleBased organizer によるタイトル・内容・担当者・相対/絶対期限抽出
 - Asana REST API / Mock adapter とサーバー側 PAT 管理
@@ -34,7 +36,7 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 11件成功、失敗0
+- xUnit: 13件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
 - SQL Server `DESKTOP-RQ3T767/TaskCapture`: InitialCreate migration と必須6テーブルを確認
 - 実SQL結合: 整理、Mock登録、API再起動後の履歴再取得、Users/履歴/候補/登録/設定/監査行を確認
@@ -44,14 +46,17 @@
 - Asana実登録: `AsanaApi`成功、Task GID `1216673939374366`、project `1216674009964669`
 - 実登録後のSQL履歴: `Registered` / `AsanaApi` / 同一Task GIDを確認
 - 同一候補の再登録: `AlreadyRegistered=true`、Asana重複作成なし
+- browser UI QA: PC幅と390px幅で横スクロールなし、入力・候補確認画面を目視確認
+- 議事録実読込: `.md` から807文字を入力欄へ反映
+- 画像OCR実動作: 日本語画面画像から476文字を抽出し、画像ファイル非送信を確認
 
 ## 未完了 / 外部待ち
 
-- browser control の初期化競合により独立ブラウザーの自動スクリーンショットQAは未実施。SPA 200、TypeScript build、lint、responsive CSS静的確認、ランチャー実ウィンドウhandle確認で代替した。
-- Windows tray/hotkey、iPhone/iPad 音声・clipboard は実端末で最終確認が必要。
+- Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
+- 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
 - HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視は未設定。
 
 ## 次に必要な作業
 
-1. HTTPS の iPhone/iPad と Windows 実機で短い受入テストを実施する。
+1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
 2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。

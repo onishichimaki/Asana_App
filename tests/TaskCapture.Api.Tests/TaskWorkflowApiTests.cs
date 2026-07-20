@@ -98,6 +98,23 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.Equal(0, await db.TaskRequests.CountAsync());
     }
 
+    [Theory]
+    [InlineData("image")]
+    [InlineData("minutes")]
+    public async Task Organize_AcceptsExtractedMediaSources(string source)
+    {
+        var response = await _client.PostAsJsonAsync("/api/task-requests/organize", new
+        {
+            rawText = "画像または議事録から抽出したタスク",
+            source
+        });
+
+        response.EnsureSuccessStatusCode();
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TaskCaptureDbContext>();
+        Assert.Equal(source, await db.TaskRequests.Select(x => x.Source).SingleAsync());
+    }
+
     [Fact]
     public async Task Register_RejectsSectionWithoutProject()
     {

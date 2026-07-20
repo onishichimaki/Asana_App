@@ -7,6 +7,8 @@ Task Capture は、React の1画面 UI、ASP.NET Core API、SQL Server、Windows
 ```mermaid
 flowchart LR
     User["PC / iPhone / iPad 利用者"] --> Web["React 1画面 UI"]
+    Image["画像 / カメラ"] --> Ocr["Tesseract.js 日本語OCR"] --> Web
+    Minutes["TXT / MD / CSV 議事録"] --> Web
     Tray["Windows tray + WebView2"] --> Web
     Web -->|HTTPS JSON| Api["ASP.NET Core API"]
     Api --> Workflow["Task workflow"]
@@ -22,7 +24,7 @@ flowchart LR
 
 | コンポーネント | 責務 |
 |---|---|
-| React UI | 入力、Clipboard API、Web Speech API、候補編集、詳細設定、登録結果表示 |
+| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、候補編集、登録結果表示 |
 | Task workflow | 状態遷移、DB 保存、監査、外部サービス呼び出しの調停 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出 |
 | Asana services | Mock と REST API の設定切り替え、候補/既定project/workspaceの登録先解決 |
@@ -67,6 +69,7 @@ erDiagram
 ## セキュリティ境界
 
 - ブラウザーには PAT、AI キー、DB 接続文字列を返さない。
+- 画像・議事録ファイルはブラウザー内で文字化し、ファイル本体をAPI/DBへ送信・保存しない。
 - API DTO の文字数・日付・JSON 形式を検証する。
 - `HttpClient` の Authorization は Asana 専用クライアントでのみ設定する。
 - ログは例外メッセージを必要最小限にし、認証ヘッダー/設定オブジェクトを出力しない。

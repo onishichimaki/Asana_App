@@ -1,13 +1,13 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "Reactの1画面から入力を整理・確認し、ASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "メイリオUI優先のReact 1画面でテキスト、議事録、画像OCR、音声を取り込み、整理・確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
       "name": "Responsive Web UI",
       "type": "React SPA",
-      "responsibility": "テキスト、貼り付け、Clipboard API、Web Speech API入力と候補確認・修正・登録を1画面で提供する。",
-      "main_inputs": ["利用者入力", "launcher clipboard message", "API response"],
+      "responsibility": "メイリオUIを優先し、テキスト、貼り付け、議事録ファイル、ブラウザー内画像OCR、Web Speech API入力と候補確認・修正・登録を1画面で提供する。",
+      "main_inputs": ["利用者テキスト", "TXT/MD/CSV", "JPEG/PNG/WebP", "音声", "launcher clipboard message", "API response"],
       "main_outputs": ["organize request", "candidate update", "registration request"],
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
     },
@@ -71,7 +71,7 @@
       "id": "task_capture_screen",
       "name": "Task Capture 1画面",
       "type": "Responsive SPA screen",
-      "description": "入力、整理、候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
+      "description": "貼り付け、議事録、画像OCR、音声の4入口と、整理、候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css"]
     },
     {
@@ -210,11 +210,11 @@
       "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
     },
     {
-      "id": "browser_platform_apis",
-      "name": "Clipboard / Web Speech APIs",
+      "id": "browser_capture_apis",
+      "name": "Clipboard / File / OCR / Web Speech",
       "type": "Browser APIs",
-      "description": "テキスト貼り付けとja-JP音声入力。非対応時はテキストへフォールバックする。",
-      "source_files": ["src/taskcapture-web/src/App.tsx", "REQUIREMENTS.md"]
+      "description": "Clipboard、UTF-8/Shift_JIS議事録読込、Tesseract.js日本語OCR、ja-JP音声入力をブラウザー内で行い、抽出文字列だけをAPIへ渡す。",
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/package.json", "REQUIREMENTS.md"]
     },
     {
       "id": "webview2_runtime",
@@ -228,8 +228,8 @@
     {
       "id": "organize_flow",
       "name": "入力から候補",
-      "inputs": ["text / paste / voice / clipboard"],
-      "processing": ["React validation", "POST organize", "TaskRequest save", "RuleBased extraction", "TaskCandidate and AuditLog save"],
+      "inputs": ["text / paste / minutes / image OCR / voice / clipboard"],
+      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased extraction", "TaskCandidate and AuditLog save"],
       "outputs": ["editable candidate"],
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs"]
     },
@@ -259,8 +259,8 @@
     },
     {
       "id": "web_stack",
-      "name": "React 19 / TypeScript 6 / Vite 8",
-      "description": "SPA実装、型検査、production bundle。",
+      "name": "React 19 / TypeScript 6 / Vite 8 / Tesseract.js 7",
+      "description": "SPA実装、型検査、production bundle、ブラウザー内日本語OCR。",
       "source_files": ["src/taskcapture-web/package.json", "src/taskcapture-web/vite.config.ts"]
     },
     {
@@ -290,10 +290,10 @@
       "source_files": ["src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
     },
     {
-      "id": "visual_qa_environment",
-      "name": "自動ブラウザー目視QA未完",
-      "description": "browser control初期化競合のため、production HTML/asset HTTP応答とbuild/static responsive CSSで代替確認した。",
-      "source_files": ["STATUS.md", "src/taskcapture-web/src/App.css"]
+      "id": "ocr_first_load",
+      "name": "画像OCRの初回モデル取得",
+      "description": "初回OCR時にTesseract.jsの日本語言語モデル取得が必要。OCR精度は画像品質に依存するため、利用者が抽出結果と候補を修正できるUIを維持する。",
+      "source_files": ["README.md", "src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
     }
   ],
   "recommended_next_actions": [
@@ -306,7 +306,7 @@
     {
       "id": "device_qa",
       "name": "実端末QA",
-      "description": "iPhone/iPadのHTTPS URLで音声・clipboard・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
+      "description": "iPhone/iPadのHTTPS URLでカメラOCR・音声・clipboard・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
       "source_files": ["REQUIREMENTS.md", "src/TaskCapture.Launcher/LauncherApplicationContext.cs"]
     }
   ]
