@@ -122,9 +122,10 @@ dotnet tool run dotnet-ef migrations script --idempotent `
 $env:Integration__Asana__Mode = "Api"
 $env:Integration__Asana__PersonalAccessToken = "YOUR_PAT"
 $env:Integration__Asana__DefaultWorkspaceGid = "YOUR_WORKSPACE_GID"
+$env:Integration__Asana__DefaultProjectGid = "YOUR_PROJECT_GID"
 ```
 
-詳細設定で project GID を指定した場合は project を使用し、section GID は project GID と組み合わせた membership として送信します。担当者は `me` または数値 GID の場合だけ Asana の assignee に設定します。自由文の担当者名は原文・候補として履歴に残り、誤った assignee API 値にはしません。
+候補の詳細設定で project GID を指定した場合はその値を優先し、未指定時は `DefaultProjectGid` を使用します。どちらも未設定の場合だけ workspace の個人タスクとして登録します。section GID は project GID と組み合わせた membership として送信します。担当者は `me` または数値 GID の場合だけ Asana の assignee に設定します。自由文の担当者名は原文・候補として履歴に残り、誤った assignee API 値にはしません。
 
 | 設定 | 既定 | 用途 |
 |---|---|---|
@@ -135,6 +136,7 @@ $env:Integration__Asana__DefaultWorkspaceGid = "YOUR_WORKSPACE_GID"
 | `Integration__Asana__Mode` | `Mock` | `Mock` / `Api` |
 | `Integration__Asana__PersonalAccessToken` | 未設定 | サーバー側 PAT |
 | `Integration__Asana__DefaultWorkspaceGid` | 未設定 | project 未指定時の workspace |
+| `Integration__Asana__DefaultProjectGid` | 未設定 | 候補で project 未指定時の登録先 project |
 | `TASK_CAPTURE_WEB_URL` | `http://localhost:5080` | launcher が開く URL |
 
 ## テストと品質確認
@@ -163,11 +165,11 @@ API と built SPA を端末から到達できる HTTPS URL に配置してくだ
 
 ## 現時点で未設定・未確認のもの
 
-- 実 Asana PAT を使った限定 project への登録 smoke test
 - iPhone / iPad の音声・clipboard と Windows tray/hotkey の実端末 QA
 - ブラウザー自動操作環境での目視レイアウトQA
+- HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視
 
-GitHubへの公開、ローカルSQL Server migration、SQL永続化スモークは完了しています。Asana認証情報がなくても、実装済みの Mock/RuleBased/SQL Server 経路でMVP全フローを利用できます。
+GitHubへの公開、ローカルSQL Server migration、SQL永続化、Asana限定projectへの実登録スモークは完了しています。PATはローカルUser Secretsだけに保存され、リポジトリには含まれません。別環境では上記の環境変数またはSecret Storeへ差し替えてください。認証情報がなくても、Mock/RuleBased経路でMVP全フローを利用できます。
 
 ## ドキュメント
 

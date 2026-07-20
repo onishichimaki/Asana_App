@@ -20,4 +20,5 @@ public sealed class AsanaOptions
     public string Mode { get; set; } = "Mock";
     public string? PersonalAccessToken { get; set; }
     public string? DefaultWorkspaceGid { get; set; }
+    public string? DefaultProjectGid { get; set; }
 }

@@ -25,7 +25,7 @@ flowchart LR
 | React UI | 入力、Clipboard API、Web Speech API、候補編集、詳細設定、登録結果表示 |
 | Task workflow | 状態遷移、DB 保存、監査、外部サービス呼び出しの調停 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出 |
-| Asana services | Mock と REST API の設定切り替え |
+| Asana services | Mock と REST API の設定切り替え、候補/既定project/workspaceの登録先解決 |
 | EF Core | SQL Server スキーマ、履歴、登録・監査データ |
 | Launcher | tray、グローバルホットキー、WebView2、クリップボード橋渡し、自動クローズ |
 
@@ -74,4 +74,4 @@ erDiagram
 
 ## 実装根拠と引き継ぎ
 
-人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。未確認の実 SQL Server/Asana 接続と端末 QA は inventory の `risks_or_unknowns` に分離している。
+人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。実 SQL Server/Asana はローカル限定環境で検証済みであり、未確認のHTTPS配備と端末 QA は inventory の `risks_or_unknowns` に分離している。

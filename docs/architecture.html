@@ -89,14 +89,13 @@
     <div class="inventory" data-group="all risk">
       <section class="section"><div class="section-title"><h2>Known risks / unknowns</h2><span>事実と分離</span></div><div class="cards">
         <div class="card risk critical"><span class="icon">!</span><div><strong>本格認証なし</strong><p>外部公開前に組織認証、TLS、rate limitが必要。</p></div></div>
-        <div class="card risk"><span class="icon">?</span><div><strong>実SQL Server / Asana未接続</strong><p>接続情報未提供。migrationとadapterまでは検証済み。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>実連携検証はローカル限定</strong><p>SQL ServerとAsana限定projectへの実登録は成功。HTTPS配備と運用監視は未検証。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>自動ブラウザー目視QA未実施</strong><p>検証環境の初期化競合。HTTP/build/static CSSで代替。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
-        <div class="card"><span class="icon">1</span><div><strong>GitHub再認証</strong><p>Issue/PR/remote既定branchとの差分を確認。</p></div></div>
-        <div class="card"><span class="icon">2</span><div><strong>限定環境smoke test</strong><p>SQL接続とAsana PAT/workspace/projectを安全に設定。</p></div></div>
-        <div class="card"><span class="icon">3</span><div><strong>実端末QA</strong><p>iPhone/iPad音声・clipboard、Windows tray/hotkey。</p></div></div>
+        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>実端末QA</strong><p>iPhone/iPad音声・clipboard、Windows tray/hotkey。</p></div></div>
       </div></section>
     </div>
     <div class="footer-note">Machine-readable inventory: <strong>docs/architecture.json</strong> · Maintenance guide: <strong>docs/architecture_readme.md</strong> · 未確認事項は risks_or_unknowns にのみ記録します。</div>

@@ -42,7 +42,7 @@
       "id": "asana_integration",
       "name": "Asana Integration",
       "type": "External service adapter",
-      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使ってタスクを作成する。",
+      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。候補の明示project、既定project、既定workspaceの順で登録先を解決してタスクを作成する。",
       "main_inputs": ["confirmed candidate", "server-side Asana settings"],
       "main_outputs": ["provider result", "external GID", "permalink or safe error"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
@@ -278,10 +278,10 @@
       "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "DECISIONS.md"]
     },
     {
-      "id": "real_integrations_unverified",
-      "name": "実SQL Server / Asana未接続",
-      "description": "provider、migration、adapterは実装済みだが、接続先とPATがないため実サービスsmoke testは未実施。",
-      "source_files": ["STATUS.md", "src/TaskCapture.Api/appsettings.json"]
+      "id": "local_integrations_only",
+      "name": "実連携検証はローカル限定",
+      "description": "DESKTOP-RQ3T767のSQL ServerとAsanaの限定projectでは実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
+      "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json"]
     },
     {
       "id": "speech_compatibility",
@@ -298,16 +298,10 @@
   ],
   "recommended_next_actions": [
     {
-      "id": "connect_github",
-      "name": "GitHub接続復旧とremote同期",
-      "description": "connectorを再認証し、Issue/PR/既定branchとローカル初期実装の差分を確認する。",
-      "source_files": ["STATUS.md", "DECISIONS.md"]
-    },
-    {
-      "id": "real_smoke_test",
-      "name": "限定環境で実連携smoke test",
-      "description": "SQL Server connectionとAsana PAT/workspace/project GIDをSecret Manager経由で設定する。",
-      "source_files": ["README.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
+      "id": "secure_deployment",
+      "name": "HTTPS限定配備",
+      "description": "配備先のSecret StoreへSQL Server接続とAsana PAT/project GIDを設定し、組織認証、TLS、rate limit、運用ログ保護を追加する。",
+      "source_files": ["README.md", "ARCHITECTURE.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
     },
     {
       "id": "device_qa",
