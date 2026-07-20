@@ -90,3 +90,10 @@
 - 状態: 採用
 - 判断: JPEG/PNG/WebPは `Tesseract.js` の日本語モデルでブラウザー内OCRし、議事録はUTF-8/Shift_JISの `.txt/.md/.csv` をブラウザーで読み込む。画像やファイル本体はAPI/DBへ送らず、最大10,000文字の抽出結果だけを既存の整理APIへ渡す。音声は引き続きWeb Speech APIを使う。
 - 理由: DBスキーマと秘密情報境界を変えずにPC・iPhone・iPad共通の入力入口を追加できるため。画像内容をサーバーへ保管せず、外部OCRキーも不要になる。初回OCRの言語モデル取得とブラウザー差はREADME/STATUSへ明記する。
+
+## D-014: Geminiを一時AI providerとし、RuleBasedへ自動フォールバックする
+
+- 日付: 2026-07-20
+- 状態: 採用
+- 判断: `ITaskOrganizer`のGemini実装をGoogle Gen AI .NET SDKとJSON Schema構造化出力で追加する。`TaskOrganization:Mode=Gemini`で選択し、キー未設定、timeout、API/応答エラー時は既定でRuleBasedへフォールバックする。将来のAzure OpenAIは同じinterfaceへadapterを追加する。
+- 理由: 現在のUI・workflow・DBを変更せずAI品質を試せ、外部サービス障害でも高速登録を継続できるため。provider固有の認証情報はサーバーSecretだけに置き、チャットやGitHubへ露出したキーは使用しない。

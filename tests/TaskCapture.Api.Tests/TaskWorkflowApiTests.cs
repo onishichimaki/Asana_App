@@ -78,6 +78,13 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.Equal(1, await db.TaskRequests.CountAsync());
         Assert.Equal(1, await db.TaskCandidates.CountAsync());
         Assert.Equal(1, await db.AsanaRegistrations.CountAsync());
+        Assert.Equal(2, await db.ApplicationSettings.CountAsync());
+        Assert.Equal(
+            "RuleBased",
+            await db.ApplicationSettings
+                .Where(x => x.Key == "TaskOrganization.Mode")
+                .Select(x => x.Value)
+                .SingleAsync());
         Assert.Equal(2, await db.AuditLogs.CountAsync());
         Assert.Equal("Registered", await db.TaskRequests.Select(x => x.Status).SingleAsync());
         Assert.Equal("発注書を最終確認する", await db.TaskCandidates.Select(x => x.Title).SingleAsync());

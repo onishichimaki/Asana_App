@@ -11,7 +11,7 @@
 ## 更新手順
 
 1. `rg --files -g '!**/bin/**' -g '!**/obj/**' -g '!**/node_modules/**'` で構成を確認する。
-2. Controller、`Program.cs`、React entrypoint、EF entities/migrations、launcher entrypoint、外部adapterを確認する。
+2. Controller、`Program.cs`、React entrypoint、EF entities/migrations、launcher entrypoint、Gemini/Asana等の外部adapterを確認する。
 3. API、テーブル、外部連携、data flowの追加・削除をJSONとHTMLへ反映する。
 4. 確認できない推測は事実欄へ置かず、`risks_or_unknowns` へ根拠とともに置く。
 5. 次の検証を実行する。
@@ -27,4 +27,4 @@ print("html_parse_ok")
 '@ | python -
 ```
 
-DBスキーマ変更時は EF Core migration、ルート `ARCHITECTURE.md`、この3ファイルを同じ変更で更新する。
+DBスキーマ変更時は EF Core migration、ルート `ARCHITECTURE.md`、この3ファイルを同じ変更で更新する。AI providerまたはフォールバックを変更した場合も、`external_integrations`、`dependencies`、`organize_flow`、リスクを同期する。

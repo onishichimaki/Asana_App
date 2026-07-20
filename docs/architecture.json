@@ -33,10 +33,19 @@
       "id": "task_organizer",
       "name": "Task Organizer",
       "type": "Replaceable domain service",
-      "responsibility": "入力からタイトル、内容、担当者、期限を決定的な日本語ルールで抽出する。",
+      "responsibility": "設定でRuleBasedまたはGeminiを選び、入力からタイトル、内容、担当者、期限を抽出する。Gemini失敗時は既定でRuleBasedへフォールバックする。",
       "main_inputs": ["raw text", "current Japan date"],
       "main_outputs": ["OrganizedTask"],
-      "source_files": ["src/TaskCapture.Api/Services/TaskOrganizer.cs", "tests/TaskCapture.Api.Tests/RuleBasedTaskOrganizerTests.cs"]
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
+    },
+    {
+      "id": "gemini_task_organizer",
+      "name": "Gemini Task Organizer",
+      "type": "AI provider adapter",
+      "responsibility": "Google Gen AI .NET SDKとJSON Schemaを使って候補1件を構造化し、JST基準日、最大長、nullable項目をOrganizedTaskへ安全に変換する。",
+      "main_inputs": ["raw text", "current Japan date", "server-side Gemini settings"],
+      "main_outputs": ["structured JSON", "OrganizedTask", "safe provider exception"],
+      "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs"]
     },
     {
       "id": "asana_integration",
@@ -196,6 +205,13 @@
   ],
   "external_integrations": [
     {
+      "id": "gemini_api",
+      "name": "Gemini API",
+      "type": "HTTPS AI API",
+      "description": "Google Gen AI .NET SDKからJSON Schema付きで呼び出す。APIキーはUser Secretsまたは配備先Secret Storeだけから読み、クライアント・DB・ログへ保存しない。",
+      "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/TaskCapture.Api.csproj", "README.md"]
+    },
+    {
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
@@ -229,9 +245,9 @@
       "id": "organize_flow",
       "name": "入力から候補",
       "inputs": ["text / paste / minutes / image OCR / voice / clipboard"],
-      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased extraction", "TaskCandidate and AuditLog save"],
+      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased or Gemini structured extraction", "RuleBased fallback on configured AI failure", "TaskCandidate and AuditLog save"],
       "outputs": ["editable candidate"],
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs"]
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
     },
     {
       "id": "registration_flow",
@@ -264,6 +280,12 @@
       "source_files": ["src/taskcapture-web/package.json", "src/taskcapture-web/vite.config.ts"]
     },
     {
+      "id": "google_genai_sdk",
+      "name": "Google.GenAI 1.14",
+      "description": "Gemini Developer APIの.NET 8 clientとJSON Schema構造化出力。provider固有処理はGeminiTaskOrganizer境界へ閉じ込める。",
+      "source_files": ["src/TaskCapture.Api/TaskCapture.Api.csproj", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
+    },
+    {
       "id": "webview2_sdk",
       "name": "Microsoft.Web.WebView2",
       "description": "WinForms launcherのWebView2 controlとweb message API。",
@@ -271,6 +293,12 @@
     }
   ],
   "risks_or_unknowns": [
+    {
+      "id": "gemini_live_smoke_pending",
+      "name": "Gemini実通信はSecret再発行待ち",
+      "description": "SDK、構造化変換、JST基準日、フォールバックはモックで確認済み。チャットへ露出したキーは使用せず、失効・再発行した未露出キーによる実通信が未確認。",
+      "source_files": ["STATUS.md", "README.md", "tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs"]
+    },
     {
       "id": "limited_auth_only",
       "name": "本格認証なし",
@@ -297,6 +325,12 @@
     }
   ],
   "recommended_next_actions": [
+    {
+      "id": "gemini_live_smoke",
+      "name": "Gemini実通信スモーク",
+      "description": "Google AI Studioで露出キーを失効・再発行し、User Secretsへ入力して候補生成とRuleBasedフォールバックを確認する。",
+      "source_files": ["README.md", "STATUS.md", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
+    },
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",

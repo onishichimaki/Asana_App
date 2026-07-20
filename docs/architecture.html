@@ -13,7 +13,7 @@
     <div class="wrap">
       <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-20</p>
       <h1>Task Capture for Asana</h1>
-      <p>テキスト・議事録・画像OCR・音声を迷わず候補へ変え、確認後にAsanaへ渡す登録専用MVP。ファイル文字化はブラウザー内、秘密情報と履歴はAPI境界の内側に置きます。</p>
+      <p>テキスト・議事録・画像OCR・音声をGeminiまたはルールで候補へ変え、確認後にAsanaへ渡す登録専用MVP。ファイル文字化はブラウザー内、AIキー・PAT・履歴はAPI境界の内側に置きます。</p>
       <div class="facts">
         <div class="fact"><strong>1 screen</strong><span>入力 → 整理 → 確認 → 登録</span></div>
         <div class="fact"><strong>6 tables</strong><span>入力・候補・登録・設定・監査</span></div>
@@ -39,6 +39,7 @@
             <button class="node" data-node="api"><span class="type">ASP.NET Core</span><strong>API Host</strong><small>validation · Problem Details</small></button>
             <button class="node" data-node="workflow"><span class="type">Application</span><strong>Task Workflow</strong><small>state · idempotency · audit</small></button>
             <button class="node" data-node="organizer"><span class="type">Domain service</span><strong>Task Organizer</strong><small>title · body · owner · due</small></button>
+            <button class="node" data-node="gemini"><span class="type">AI adapter</span><strong>Gemini + fallback</strong><small>JSON Schema · RuleBased</small></button>
           </div></div>
           <div class="arrow">↓ adapter / EF Core ↓</div>
           <div class="lane"><p class="lane-label">DATA & EXTERNAL</p><div class="nodes">
@@ -74,13 +75,14 @@
     <div class="inventory" data-group="all integration">
       <section class="section"><div class="section-title"><h2>Integration boundary</h2><span>設定で差し替え</span></div><div class="cards">
         <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>POST /api/1.0/tasks。PATはAPI設定のみ。</p></div></div>
+        <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで候補化。キー未設定・失敗時はRuleBasedへ戻る。</p></div></div>
         <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
         <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
         <div class="card"><span class="icon">OS</span><div><strong>Clipboard / File / OCR / Speech</strong><p>議事録と画像はブラウザー内で文字化し、画像本体はAPIへ送らない。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Data flow</h2><span>同期MVP</span></div><div class="cards">
         <div class="card"><span class="icon">1</span><div><strong>Capture</strong><p>端末入力・ファイル文字化 → React → validated HTTP JSON。</p></div></div>
-        <div class="card"><span class="icon">2</span><div><strong>Organize</strong><p>TaskRequest → RuleBased → TaskCandidate + AuditLog。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>Organize</strong><p>TaskRequest → Gemini / RuleBased fallback → TaskCandidate + AuditLog。</p></div></div>
         <div class="card"><span class="icon">3</span><div><strong>Confirm</strong><p>基本4項目を編集。高度な項目は折りたたみ。</p></div></div>
         <div class="card"><span class="icon">4</span><div><strong>Register</strong><p>idempotency → Asana/Mock → Registration + Audit。</p></div></div>
       </div></section>
@@ -89,13 +91,15 @@
     <div class="inventory" data-group="all risk">
       <section class="section"><div class="section-title"><h2>Known risks / unknowns</h2><span>事実と分離</span></div><div class="cards">
         <div class="card risk critical"><span class="icon">!</span><div><strong>本格認証なし</strong><p>外部公開前に組織認証、TLS、rate limitが必要。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>Gemini実通信待ち</strong><p>実装とモックテストは完了。露出キーを失効・再発行して実APIスモークが必要。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>実連携検証はローカル限定</strong><p>SQL ServerとAsana限定projectへの実登録は成功。HTTPS配備と運用監視は未検証。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>OCR初回モデル取得</strong><p>初回のみ日本語モデル取得が必要。精度は画像品質に依存し、確認・修正を前提とする。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
-        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
-        <div class="card"><span class="icon">2</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
+        <div class="card"><span class="icon">1</span><div><strong>Gemini実通信</strong><p>再発行キーをUser Secretsへ設定し、候補生成を1件スモーク。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
+        <div class="card"><span class="icon">3</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
       </div></section>
     </div>
     <div class="footer-note">Machine-readable inventory: <strong>docs/architecture.json</strong> · Maintenance guide: <strong>docs/architecture_readme.md</strong> · 未確認事項は risks_or_unknowns にのみ記録します。</div>
@@ -107,7 +111,8 @@
       webview:{type:'WebView2',name:'Launcher Bridge',description:'同じReact画面をhostし、clipboardをJSON messageで渡し、登録完了messageで画面を隠します。',flow:'Windows clipboard ⇄ JSON web message ⇄ React SPA',sources:['src/TaskCapture.Launcher/LauncherForm.cs','src/taskcapture-web/src/App.tsx']},
       api:{type:'ASP.NET Core',name:'API Host',description:'DI、DB provider切替、CORS、Controller、Problem Details、production SPA配信を構成します。',flow:'HTTP / configuration → controllers and services → HTTP / static assets',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs']},
       workflow:{type:'Application Service',name:'Task Workflow',description:'入力保存、候補生成・更新、状態遷移、冪等な登録、監査を調停します。',flow:'validated DTO → entities / adapters → candidate or registration response',sources:['src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Contracts/TaskDtos.cs']},
-      organizer:{type:'Domain Service',name:'Task Organizer',description:'外部キー不要の決定的ルールでタイトル、内容、担当者、期限を抽出します。ITaskOrganizerで差し替え可能です。',flow:'raw text + Japan date → OrganizedTask',sources:['src/TaskCapture.Api/Services/TaskOrganizer.cs','tests/TaskCapture.Api.Tests/RuleBasedTaskOrganizerTests.cs']},
+      organizer:{type:'Domain Service',name:'Task Organizer',description:'設定でRuleBasedまたはGeminiを選択し、タイトル、内容、担当者、期限を抽出します。ITaskOrganizer境界は将来のAzure OpenAIでも維持します。',flow:'raw text + Japan date → provider adapter → OrganizedTask',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Services/TaskOrganizer.cs','src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs']},
+      gemini:{type:'AI Adapter',name:'Gemini + fallback',description:'Google Gen AI .NET SDKとJSON Schemaで候補1件を構造化します。キー未設定、timeout、API/応答エラーではRuleBasedへ自動フォールバックします。',flow:'raw text + server-side secret → Gemini API → validated OrganizedTask / RuleBased fallback',sources:['src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs']},
       db:{type:'EF Core / SQL Server',name:'Persistence',description:'6テーブル、index、relationship、InitialCreate migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs']},
       asana:{type:'External Adapter',name:'Asana / Mock',description:'MockとAsana REST APIを設定で選択します。Bearer PATはサーバー側以外に出ません。',flow:'confirmed candidate → POST tasks / mock → safe result',sources:['src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs']},
       audit:{type:'Data Model',name:'History & Audit',description:'入力、候補、登録試行、設定meta、イベントとcorrelation IDをUTCで保存します。',flow:'workflow events → 6 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs']}

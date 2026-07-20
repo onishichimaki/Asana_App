@@ -34,7 +34,32 @@ builder.Services.AddDbContext<TaskCaptureDbContext>((services, options) =>
 });
 
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddScoped<ITaskOrganizer, RuleBasedTaskOrganizer>();
+builder.Services.AddScoped<RuleBasedTaskOrganizer>();
+builder.Services.AddScoped<IGeminiTaskClient, GoogleGeminiTaskClient>();
+builder.Services.AddScoped<GeminiTaskOrganizer>();
+builder.Services.AddScoped<ITaskOrganizer>(services =>
+{
+    var options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<TaskOrganizationOptions>>().Value;
+    var ruleBased = services.GetRequiredService<RuleBasedTaskOrganizer>();
+
+    if (options.Mode.Equals("RuleBased", StringComparison.OrdinalIgnoreCase))
+    {
+        return ruleBased;
+    }
+
+    if (!options.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Unsupported task organizer mode: {options.Mode}");
+    }
+
+    var gemini = services.GetRequiredService<GeminiTaskOrganizer>();
+    return options.FallbackToRuleBased
+        ? new FallbackTaskOrganizer(
+            gemini,
+            ruleBased,
+            services.GetRequiredService<ILogger<FallbackTaskOrganizer>>())
+        : gemini;
+});
 builder.Services.AddScoped<MockAsanaTaskService>();
 builder.Services.AddHttpClient<ApiAsanaTaskService>(client =>
 {

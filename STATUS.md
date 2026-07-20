@@ -4,8 +4,8 @@
 
 ## 現在地
 
-- フェーズ: MVP 実装・実SQL/Asana結合検証・GitHub公開・文書整備完了
-- MVP 判定: Mock/RuleBased/SQL Server/Asana API 経路を含め完成
+- フェーズ: MVP完成、Gemini AI整理の実装・自動テスト完了、実API Secret再発行待ち
+- MVP 判定: Mock/RuleBased/SQL Server/Asana API経路は完成。Gemini実通信のみ外部待ち。
 
 ## 完了
 
@@ -15,6 +15,8 @@
 - JPEG/PNG/WebPの選択・撮影・貼り付けと、Tesseract.jsによるブラウザー内日本語OCR
 - ASP.NET Core API、DataAnnotations、Problem Details、CORS、SPA 配信
 - RuleBased organizer によるタイトル・内容・担当者・相対/絶対期限抽出
+- Gemini公式.NET SDK、JSON Schema構造化整理、20秒timeout、RuleBased自動フォールバック
+- `ITaskOrganizer`境界を維持し、将来のAzure OpenAI adapter追加でUI・DBを変更しない構成
 - Asana REST API / Mock adapter とサーバー側 PAT 管理
 - 候補未指定時のAsana既定project設定（`DefaultProjectGid`）
 - 成功済み候補の二重登録防止
@@ -36,7 +38,7 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 13件成功、失敗0
+- xUnit: 17件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
 - SQL Server `DESKTOP-RQ3T767/TaskCapture`: InitialCreate migration と必須6テーブルを確認
 - 実SQL結合: 整理、Mock登録、API再起動後の履歴再取得、Users/履歴/候補/登録/設定/監査行を確認
@@ -49,14 +51,18 @@
 - browser UI QA: PC幅と390px幅で横スクロールなし、入力・候補確認画面を目視確認
 - 議事録実読込: `.md` から807文字を入力欄へ反映
 - 画像OCR実動作: 日本語画面画像から476文字を抽出し、画像ファイル非送信を確認
+- Gemini organizer: 構造化JSON変換、JST基準日、欠損値処理、RuleBasedフォールバックをSDKモックで確認
+- Gemini mode / APIキー未設定の実HTTP smoke: healthはGemini modelとfallback有効を返し、候補はRuleBasedで正常生成
 
 ## 未完了 / 外部待ち
 
 - Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
+- チャットへ貼られたGemini APIキーは使用せず、失効・再発行した未露出キーによる実通信スモークが必要。
 - 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
 - HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視は未設定。
 
 ## 次に必要な作業
 
-1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
-2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
+1. Google AI Studioで露出キーを失効・再発行し、ローカルUser Secretsへ設定してGemini整理を1件スモークする。
+2. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
+3. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
