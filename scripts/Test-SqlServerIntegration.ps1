@@ -108,6 +108,7 @@ try {
         description = $candidate.description
         assignee = 'me'
         dueDate = '2026-08-31'
+        subtasks = @("SQL subtask smoke $marker")
         tags = @()
         customFields = @{}
         priority = 'normal'
@@ -154,6 +155,13 @@ SELECT CONCAT(
     (SELECT COUNT(*) FROM AsanaRegistrations r
         JOIN TaskCandidates c ON c.Id=r.TaskCandidateId
         WHERE c.TaskRequestId='$requestId' AND r.Succeeded=1 AND r.Provider='Mock'), '|',
+    (SELECT COUNT(*) FROM TaskCandidateSubtasks s
+        JOIN TaskCandidates c ON c.Id=s.TaskCandidateId
+        WHERE c.TaskRequestId='$requestId'), '|',
+    (SELECT COUNT(*) FROM AsanaSubtaskRegistrations sr
+        JOIN TaskCandidateSubtasks s ON s.Id=sr.TaskCandidateSubtaskId
+        JOIN TaskCandidates c ON c.Id=s.TaskCandidateId
+        WHERE c.TaskRequestId='$requestId' AND sr.Succeeded=1 AND sr.Provider='Mock'), '|',
     (SELECT COUNT(*) FROM AuditLogs WHERE EntityId IN ('$requestId','$candidateId')), '|',
     (SELECT COUNT(*) FROM ApplicationSettings), '|',
     (SELECT COUNT(*) FROM Users WHERE ClientKey='sql-server-smoke'));
@@ -169,13 +177,15 @@ SELECT CONCAT(
         -Q $query
     $counts = ($countOutput | Where-Object { $_.Trim() } | Select-Object -First 1).Trim()
     $countParts = @($counts -split '\|' | ForEach-Object { [int]$_ })
-    $countsAreValid = $countParts.Count -eq 6 -and
+    $countsAreValid = $countParts.Count -eq 8 -and
         $countParts[0] -eq 1 -and
         $countParts[1] -eq 1 -and
         $countParts[2] -eq 1 -and
-        $countParts[3] -ge 2 -and
-        $countParts[4] -ge 2 -and
-        $countParts[5] -eq 1
+        $countParts[3] -eq 1 -and
+        $countParts[4] -eq 1 -and
+        $countParts[5] -ge 2 -and
+        $countParts[6] -ge 2 -and
+        $countParts[7] -eq 1
     if (-not $countsAreValid) {
         throw "Unexpected SQL row counts: $counts"
     }
@@ -186,7 +196,7 @@ SELECT CONCAT(
     Write-Output "SQL_SMOKE_EXTERNAL_GID=$($registered.externalTaskGid)"
     Write-Output 'SQL_SMOKE_WEB_SPA=PASS'
     Write-Output 'SQL_SMOKE_RESTART_PERSISTENCE=PASS'
-    Write-Output "SQL_COUNTS_REQUEST_CANDIDATE_REGISTRATION_AUDIT_SETTINGS_USER=$counts"
+    Write-Output "SQL_COUNTS_REQUEST_CANDIDATE_REGISTRATION_SUBTASK_SUBTASKREGISTRATION_AUDIT_SETTINGS_USER=$counts"
     Write-Output 'SQL_PERSISTENCE_INTEGRATION=PASS'
 }
 finally {

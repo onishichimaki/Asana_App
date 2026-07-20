@@ -42,7 +42,20 @@ public sealed class TaskCandidate
     [MaxLength(32)] public string? Priority { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public List<TaskCandidateSubtask> Subtasks { get; set; } = [];
     public List<AsanaRegistration> Registrations { get; set; } = [];
+}
+
+public sealed class TaskCandidateSubtask
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TaskCandidateId { get; set; }
+    public TaskCandidate TaskCandidate { get; set; } = null!;
+    [MaxLength(200)] public string Title { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public List<AsanaSubtaskRegistration> Registrations { get; set; } = [];
 }
 
 public sealed class AsanaRegistration
@@ -50,6 +63,20 @@ public sealed class AsanaRegistration
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid TaskCandidateId { get; set; }
     public TaskCandidate TaskCandidate { get; set; } = null!;
+    public bool Succeeded { get; set; }
+    [MaxLength(32)] public string Provider { get; set; } = "Mock";
+    [MaxLength(64)] public string? ExternalTaskGid { get; set; }
+    [MaxLength(500)] public string? ExternalTaskUrl { get; set; }
+    [MaxLength(100)] public string? ErrorCode { get; set; }
+    [MaxLength(1_000)] public string? ErrorMessage { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class AsanaSubtaskRegistration
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TaskCandidateSubtaskId { get; set; }
+    public TaskCandidateSubtask TaskCandidateSubtask { get; set; } = null!;
     public bool Succeeded { get; set; }
     [MaxLength(32)] public string Provider { get; set; } = "Mock";
     [MaxLength(64)] public string? ExternalTaskGid { get; set; }

@@ -51,14 +51,51 @@ public sealed class ApiAsanaTaskServiceTests
         Assert.False(data.TryGetProperty("workspace", out _));
     }
 
+    [Fact]
+    public async Task CreateSubtaskAsync_PostsToParentSubtasksEndpoint()
+    {
+        var handler = new RecordingHandler(
+            """{"data":{"gid":"555666777","permalink_url":"https://app.asana.com/0/0/555666777"}}""");
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com/api/1.0/") };
+        var options = Microsoft.Extensions.Options.Options.Create(new AsanaOptions
+        {
+            Mode = "Api",
+            PersonalAccessToken = "test-secret",
+            DefaultProjectGid = "1216674009964669"
+        });
+        var service = new ApiAsanaTaskService(client, options);
+        var candidate = new TaskCandidate
+        {
+            Title = "カレーを作る",
+            Description = "カレーを作る。",
+            Assignee = "me",
+            DueDate = new DateOnly(2026, 7, 21),
+            TagsJson = "[]",
+            CustomFieldsJson = "{}"
+        };
+        var subtask = new TaskCandidateSubtask { Title = "冷蔵庫の食材を確認する" };
+
+        var result = await service.CreateSubtaskAsync(candidate, subtask, "111222333", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.EndsWith("/tasks/111222333/subtasks", handler.RequestUri);
+        using var document = JsonDocument.Parse(handler.RequestBody!);
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal("冷蔵庫の食材を確認する", data.GetProperty("name").GetString());
+        Assert.Equal("me", data.GetProperty("assignee").GetString());
+        Assert.Equal("2026-07-21", data.GetProperty("due_on").GetString());
+    }
+
     private sealed class RecordingHandler(string responseBody) : HttpMessageHandler
     {
         public string? RequestBody { get; private set; }
+        public string? RequestUri { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            RequestUri = request.RequestUri?.ToString();
             RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.Created)
             {

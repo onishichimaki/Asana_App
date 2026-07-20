@@ -27,11 +27,11 @@ flowchart LR
 
 | コンポーネント | 責務 |
 |---|---|
-| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、候補編集、登録結果表示 |
-| Task workflow | 状態遷移、DB 保存、監査、外部サービス呼び出しの調停 |
-| RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出 |
-| Gemini organizer | GeminiのJSON Schema出力を候補へ変換し、未設定・失敗時はRuleBasedへフォールバック |
-| Asana services | Mock と REST API の設定切り替え、候補/既定project/workspaceの登録先解決 |
+| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補の編集、登録結果表示 |
+| Task workflow | 状態遷移、親子候補のDB保存、監査、親→子の順序制御、部分失敗時の再開 |
+| RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出と、明示された箇条書きのサブタスク化 |
+| Gemini organizer | GeminiのJSON Schema出力を親候補と0〜6件の実行可能なサブタスクへ変換し、未設定・失敗時はRuleBasedへフォールバック |
+| Asana services | Mock と REST API の設定切り替え、親タスク/サブタスク登録、候補/既定project/workspaceの登録先解決 |
 | EF Core | SQL Server スキーマ、履歴、登録・監査データ |
 | Launcher | tray、グローバルホットキー、WebView2、クリップボード橋渡し、自動クローズ |
 
@@ -42,7 +42,7 @@ flowchart LR
 | GET | `/api/health` | 起動状態、DB/AI/Asana モード確認（秘密情報なし） |
 | POST | `/api/task-requests/organize` | 入力保存と候補生成 |
 | PUT | `/api/task-candidates/{id}` | 確認・修正した候補の保存 |
-| POST | `/api/task-candidates/{id}/register` | 候補保存と Asana/Mock 登録 |
+| POST | `/api/task-candidates/{id}/register` | 親候補とサブタスクの保存、Asana/Mockへの親子登録 |
 | GET | `/api/task-requests/recent` | 限定的な直近履歴確認 |
 
 ## データモデル
@@ -51,13 +51,17 @@ flowchart LR
 erDiagram
     Users ||--o{ TaskRequests : creates
     TaskRequests ||--o{ TaskCandidates : produces
+    TaskCandidates ||--o{ TaskCandidateSubtasks : contains
     TaskCandidates ||--o{ AsanaRegistrations : registers
+    TaskCandidateSubtasks ||--o{ AsanaSubtaskRegistrations : registers
     Users ||--o{ AuditLogs : generates
 
     Users { guid Id PK string DisplayName string ClientKey }
     TaskRequests { guid Id PK guid UserId FK string RawText string Source string Status datetime CreatedAtUtc }
     TaskCandidates { guid Id PK guid TaskRequestId FK string Title string Description string Assignee date DueDate string AdvancedSettingsJson }
+    TaskCandidateSubtasks { guid Id PK guid TaskCandidateId FK string Title int SortOrder }
     AsanaRegistrations { guid Id PK guid TaskCandidateId FK bool Succeeded string ExternalTaskGid string ExternalTaskUrl string ErrorCode }
+    AsanaSubtaskRegistrations { guid Id PK guid TaskCandidateSubtaskId FK bool Succeeded string ExternalTaskGid string ExternalTaskUrl string ErrorCode }
     ApplicationSettings { string Key PK string Value string Description }
     AuditLogs { guid Id PK guid UserId string EventType string EntityType string EntityId string Detail }
 ```
@@ -66,9 +70,9 @@ erDiagram
 
 ## 状態遷移
 
-`Received → Organized → Edited（任意）→ Registering → Registered / Failed`
+`Received → Organized → Edited（任意）→ Registering → Registered / PartiallyRegistered / Failed`
 
-整理失敗・登録失敗でも `TaskRequests` と `AuditLogs` を保存し、再現に必要な相関 ID を API Problem Details に返す。
+親タスクを先に登録してGIDを保存し、その後にサブタスクを `POST /tasks/{task_gid}/subtasks` で順に登録する。部分失敗時は成功済みの親・子を再作成せず、失敗した子だけを次回再試行する。整理失敗・登録失敗でも `TaskRequests` と `AuditLogs` を保存し、再現に必要な相関 ID を API Problem Details に返す。
 
 ## セキュリティ境界
 

@@ -34,7 +34,7 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
     {
         var organizeResponse = await _client.PostAsJsonAsync("/api/task-requests/organize", new
         {
-            rawText = "発注書を確認する\n担当：田中さん\n期限：2026-08-02",
+            rawText = "発注書を確認する\n- 金額を照合する\n- 承認印を確認する\n担当：田中さん\n期限：2026-08-02",
             source = "paste"
         });
         organizeResponse.EnsureSuccessStatusCode();
@@ -43,6 +43,7 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.Equal("発注書を確認する", organized.Candidate.Title);
         Assert.Equal("田中さん", organized.Candidate.Assignee);
         Assert.Equal(new DateOnly(2026, 8, 2), organized.Candidate.DueDate);
+        Assert.Equal(["金額を照合する", "承認印を確認する"], organized.Candidate.Subtasks);
 
         var update = new CandidateUpdateRequest
         {
@@ -50,6 +51,7 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
             Description = organized.Candidate.Description,
             Assignee = "me",
             DueDate = organized.Candidate.DueDate,
+            Subtasks = organized.Candidate.Subtasks,
             ProjectGid = "123456789",
             Tags = ["987654321"],
             Priority = "high"
@@ -63,6 +65,8 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.True(registration.Succeeded);
         Assert.Equal("Mock", registration.Provider);
         Assert.StartsWith("mock-", registration.ExternalTaskGid);
+        Assert.Equal(2, registration.Subtasks.Count);
+        Assert.All(registration.Subtasks, subtask => Assert.True(subtask.Succeeded));
 
         var secondResponse = await _client.PostAsJsonAsync(
             $"/api/task-candidates/{organized.Candidate.Id}/register",
@@ -77,7 +81,9 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<TaskCaptureDbContext>();
         Assert.Equal(1, await db.TaskRequests.CountAsync());
         Assert.Equal(1, await db.TaskCandidates.CountAsync());
+        Assert.Equal(2, await db.TaskCandidateSubtasks.CountAsync());
         Assert.Equal(1, await db.AsanaRegistrations.CountAsync());
+        Assert.Equal(2, await db.AsanaSubtaskRegistrations.CountAsync());
         Assert.Equal(2, await db.ApplicationSettings.CountAsync());
         Assert.Equal(
             "RuleBased",

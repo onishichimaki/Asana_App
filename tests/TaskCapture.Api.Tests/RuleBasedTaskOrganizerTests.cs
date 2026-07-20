@@ -18,6 +18,7 @@ public sealed class RuleBasedTaskOrganizerTests
         Assert.Equal("田中さん", result.Assignee);
         Assert.Equal(new DateOnly(2026, 7, 19), result.DueDate);
         Assert.Contains("見積書", result.Description);
+        Assert.Empty(result.Subtasks);
     }
 
     [Theory]
@@ -41,6 +42,20 @@ public sealed class RuleBasedTaskOrganizerTests
 
         Assert.Equal(120, result.Title.Length);
         Assert.EndsWith("...", result.Title);
+    }
+
+    [Fact]
+    public async Task OrganizeAsync_PreservesExplicitBulletSubtasksForFallback()
+    {
+        var organizer = new RuleBasedTaskOrganizer(TimeProvider.System);
+
+        var result = await organizer.OrganizeAsync(
+            "カレーを作る\n- レシピを決める\n- 冷蔵庫を確認する\n- 買い物に行く",
+            CancellationToken.None);
+
+        Assert.Equal(
+            ["レシピを決める", "冷蔵庫を確認する", "買い物に行く"],
+            result.Subtasks);
     }
 
     private sealed class FrozenTimeProvider(DateTimeOffset utcNow) : TimeProvider
