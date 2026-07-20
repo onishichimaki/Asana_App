@@ -9,7 +9,7 @@
 
 ## 完了
 
-- メイリオUI優先のReactレスポンシブ1画面（入力 → 整理 → 確認・修正 → 登録）
+- メイリオUI優先で説明・余白を抑えたReactレスポンシブ1画面（入力 → 整理 → 確認・修正 → 登録）
 - 通常貼り付け、Clipboard API、Web Speech API 日本語音声入力と非対応フォールバック
 - UTF-8/Shift_JISの `.txt/.md/.csv` 議事録読込
 - JPEG/PNG/WebPの選択・撮影・貼り付けと、Tesseract.jsによるブラウザー内日本語OCR
@@ -24,7 +24,7 @@
 - Development/Test の InMemory provider 差し替え
 - .NET User Secrets によるローカルSQL Server設定と環境変数による配備先差し替え
 - 再実行可能な `scripts/Test-SqlServerIntegration.ps1`
-- WinForms + WebView2 tray launcher、Ctrl+Shift+A、clipboard bridge、登録後自動非表示
+- WinForms + WebView2 tray launcher、Ctrl+Shift+A、clipboard bridge、登録後自動非表示、標準の最小化・閉じるボタン
 - ランチャー通常起動時の入力画面表示、`--background` tray起動、`--clipboard` 起動
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
 - `docs/architecture.html`、`docs/architecture.json`、`docs/architecture_readme.md`
@@ -55,6 +55,9 @@
 - Gemini mode / APIキー未設定の実HTTP smoke: healthはGemini modelとfallback有効を返し、候補はRuleBasedで正常生成
 - Gemini実通信: fallback無効の独立InMemory APIで `gemini-3.5-flash` がタイトル・担当者・期限を構造化し、HTTP 200を確認
 - 通常起動: SQL Server / Gemini（fallback有効）/ Asana API、Windows launcher応答を確認
+- API再疎通: SQL Server / Gemini / Asana APIをhealthで確認し、Gemini実通信でタイトル・担当者・期限を再抽出
+- compact UI QA: launcher相当520px幅とiPhone相当390px幅で横スクロール・console警告なし
+- Launcher実画面QA: 初期操作が1画面内に収まり、標準タイトルバーの最小化「－」と閉じる「×」を確認
 
 ## 未完了 / 外部待ち
 

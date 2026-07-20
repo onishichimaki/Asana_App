@@ -97,3 +97,10 @@
 - 状態: 採用
 - 判断: `ITaskOrganizer`のGemini実装をGoogle Gen AI .NET SDKとJSON Schema構造化出力で追加する。`TaskOrganization:Mode=Gemini`で選択し、キー未設定、timeout、API/応答エラー時は既定でRuleBasedへフォールバックする。将来のAzure OpenAIは同じinterfaceへadapterを追加する。
 - 理由: 現在のUI・workflow・DBを変更せずAI品質を試せ、外部サービス障害でも高速登録を継続できるため。provider固有の認証情報はサーバーSecretだけに置き、チャットやGitHubへ露出したキーは使用しない。
+
+## D-015: 初期画面を短くし、launcherは標準Windowsタイトルバーを使う
+
+- 日付: 2026-07-20
+- 状態: 採用
+- 判断: 常時表示していた手順説明、入力方法の補足、監査説明を省き、初期画面は入力方法・入力欄・整理ボタンへ集中する。launcher queryでは余白と入力欄をさらに縮める。WinFormsは標準のサイズ変更可能なタイトルバーを使い、最小化「－」と閉じる「×」を表示する。閉じる操作は従来どおりtray格納とする。
+- 理由: 小さい常駐launcherでも主要操作をスクロールなしで表示し、Windows利用者が迷わず最小化・格納できるようにするため。Webとlauncherで機能実装は共有したまま、表示密度だけを用途に合わせる。

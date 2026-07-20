@@ -23,12 +23,16 @@ internal sealed class LauncherForm : Form
         _webUri = uri;
         Text = "Task Capture";
         Width = 520;
-        Height = 760;
-        MinimumSize = new Size(400, 560);
+        Height = 620;
+        MinimumSize = new Size(400, 500);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
         TopMost = true;
-        FormBorderStyle = FormBorderStyle.SizableToolWindow;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        ControlBox = true;
+        MinimizeBox = true;
+        MaximizeBox = false;
+        ShowIcon = false;
         Controls.Add(_webView);
         FormClosing += OnFormClosing;
     }

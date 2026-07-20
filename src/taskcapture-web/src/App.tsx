@@ -26,6 +26,7 @@ const maxImageBytes = 10 * 1024 * 1024
 const maxMinutesBytes = 2 * 1024 * 1024
 const acceptedMinutesExtensions = ['.txt', '.md', '.csv']
 const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp']
+const isLauncher = new URLSearchParams(window.location.search).get('launcher') === '1'
 
 function getClientKey() {
   const storageKey = 'task-capture-client-key'
@@ -313,39 +314,30 @@ function App() {
   }
 
   return (
-    <main className="app-shell" onKeyDown={handleShortcut}>
+    <main className={`app-shell ${isLauncher ? 'launcher-shell' : ''}`} onKeyDown={handleShortcut}>
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">✓</div>
-          <div><p className="eyebrow">TASK CAPTURE</p><h1>タスクをすぐ Asana へ</h1><p className="subtitle">文字・議事録・画像・音声から、登録内容をひとつに整理します。</p></div>
-        </div>
-        <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? '接続中' : '未接続'}</div>
+        <h1>Asanaへタスク登録</h1>
+        <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
       </header>
-
-      <ol className="steps" aria-label="登録手順">
-        <li className="active"><span>1</span><strong>入力</strong></li>
-        <li className={candidate ? 'active' : ''}><span>2</span><strong>確認・修正</strong></li>
-        <li className={registration ? 'active' : ''}><span>3</span><strong>Asana登録</strong></li>
-      </ol>
 
       <section className="panel input-panel" aria-labelledby="input-heading">
         <div className="section-heading">
-          <div><p className="step-label">STEP 1</p><h2 id="input-heading">登録したい内容を入れてください</h2><p>そのまま文章で大丈夫です。担当者や期限があれば一緒に入力します。</p></div>
+          <h2 id="input-heading">内容を入力</h2>
           <span className="source-badge">{readableSource(source)}</span>
         </div>
 
         <div className="input-source-grid" aria-label="入力方法">
-          <button type="button" className="source-button" onClick={readClipboard} disabled={isWorking}>
-            <span className="tool-icon" aria-hidden="true">▣</span><span><strong>貼り付け</strong><small>クリップボード</small></span>
+          <button type="button" className="source-button" onClick={readClipboard} disabled={isWorking} title="クリップボードから貼り付ける">
+            <span className="tool-icon" aria-hidden="true">▣</span><strong>貼り付け</strong>
           </button>
-          <button type="button" className="source-button" onClick={() => minutesInputRef.current?.click()} disabled={isWorking}>
-            <span className="tool-icon" aria-hidden="true">文</span><span><strong>議事録</strong><small>TXT・MD・CSV</small></span>
+          <button type="button" className="source-button" onClick={() => minutesInputRef.current?.click()} disabled={isWorking} title="TXT・MD・CSVを読み込む">
+            <span className="tool-icon" aria-hidden="true">文</span><strong>議事録</strong>
           </button>
-          <button type="button" className="source-button" onClick={() => imageInputRef.current?.click()} disabled={isWorking}>
-            <span className="tool-icon" aria-hidden="true">画</span><span><strong>画像</strong><small>写真からOCR</small></span>
+          <button type="button" className="source-button" onClick={() => imageInputRef.current?.click()} disabled={isWorking} title="画像を端末内で文字化する">
+            <span className="tool-icon" aria-hidden="true">画</span><strong>画像</strong>
           </button>
-          <button type="button" className={`source-button ${listening ? 'recording' : ''}`} onClick={toggleSpeech} aria-pressed={listening} disabled={isWorking && !listening}>
-            <span className="tool-icon microphone" aria-hidden="true">●</span><span><strong>{listening ? '停止する' : '音声入力'}</strong><small>{speechSupported ? (listening ? '認識中' : '日本語で話す') : '端末マイクも利用可'}</small></span>
+          <button type="button" className={`source-button ${listening ? 'recording' : ''}`} onClick={toggleSpeech} aria-pressed={listening} disabled={isWorking && !listening} title={speechSupported ? '日本語で音声入力する' : 'ブラウザー非対応時は端末のマイク入力を利用できます'}>
+            <span className="tool-icon microphone" aria-hidden="true">●</span><strong>{listening ? '停止' : '音声'}</strong>
           </button>
         </div>
         <input ref={minutesInputRef} hidden type="file" tabIndex={-1} aria-hidden="true" accept=".txt,.md,.csv,text/plain,text/markdown,text/csv" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importMinutes(file) }} />
@@ -357,26 +349,24 @@ function App() {
           <div><strong>{importStatus.kind === 'image' ? '画像OCR' : importStatus.kind === 'minutes' ? '議事録' : importStatus.kind === 'voice' ? '音声入力' : '取り込み'}</strong><p>{importStatus.text}</p>{typeof importStatus.progress === 'number' && <div className="progress-track"><span style={{ width: `${importStatus.progress}%` }} /></div>}</div>
         </div>}
 
-        <div className="input-label-row"><label htmlFor="task-input">タスクにしたい内容</label><span className="char-count">{rawText.length.toLocaleString()} / {maxInputLength.toLocaleString()}</span></div>
-        <textarea id="task-input" ref={inputRef} value={rawText} maxLength={maxInputLength} rows={7} placeholder={'例：明日までに見積書を確認する\n担当：田中さん\n\n議事録を貼り付けても、そのまま整理できます。'}
+        <div className="input-label-row"><label htmlFor="task-input">タスク内容</label><span className="char-count">{rawText.length.toLocaleString()} / {maxInputLength.toLocaleString()}</span></div>
+        <textarea id="task-input" ref={inputRef} value={rawText} maxLength={maxInputLength} rows={isLauncher ? 3 : 5} placeholder={'例：明日までに見積書を確認する\n担当：田中さん'}
           onChange={(event) => { setRawText(event.target.value); setSource('text'); setMessage(null); setImportStatus(null); setImagePreviewUrl(null); clearDerivedResults() }} onPaste={handlePaste} aria-label="タスクにしたい内容" />
-        <p className="privacy-note"><span aria-hidden="true">◇</span>画像はこの端末内で文字化し、画像ファイル自体はサーバーへ保存しません。</p>
-        <button type="button" className="primary-button" onClick={organize} disabled={isWorking || !rawText.trim()}>
+        <button type="button" className="primary-button" onClick={organize} disabled={isWorking || !rawText.trim()} title="Ctrl+Enterでも実行できます">
           {busy === 'organize' ? <span className="spinner" aria-hidden="true" /> : <span aria-hidden="true">✦</span>}
-          <span>{mediaBusy === 'image' ? '画像を読み取っています…' : busy === 'organize' ? '整理しています…' : 'AIで整理して候補を作る'}</span>
-          <kbd>Ctrl ↵</kbd>
+          <span>{mediaBusy === 'image' ? '画像を読み取り中…' : busy === 'organize' ? '整理中…' : 'AIで整理'}</span>
         </button>
       </section>
 
       {candidate && <section className="panel candidate-panel" aria-labelledby="candidate-heading">
-        <div className="section-heading"><div><p className="step-label">STEP 2</p><h2 id="candidate-heading">内容を確認・修正してください</h2><p>間違いがあれば、登録前にここで直せます。</p></div><span className="ready-badge">編集できます</span></div>
+        <div className="section-heading"><h2 id="candidate-heading">登録内容を確認</h2><span className="ready-badge">編集可</span></div>
         <div className="field full-field"><label htmlFor="candidate-title">タスクタイトル <strong>必須</strong></label><input id="candidate-title" value={candidate.title} maxLength={200} onChange={(event) => setDraftField('title', event.target.value)} /></div>
-        <div className="field full-field"><label htmlFor="candidate-description">タスク内容</label><textarea id="candidate-description" value={candidate.description} maxLength={maxInputLength} rows={5} onChange={(event) => setDraftField('description', event.target.value)} /></div>
+        <div className="field full-field"><label htmlFor="candidate-description">タスク内容</label><textarea id="candidate-description" value={candidate.description} maxLength={maxInputLength} rows={isLauncher ? 3 : 4} onChange={(event) => setDraftField('description', event.target.value)} /></div>
         <div className="field-grid">
-          <div className="field"><label htmlFor="candidate-assignee">担当者</label><input id="candidate-assignee" value={candidate.assignee ?? ''} maxLength={200} placeholder="名前 / me / Asana GID" onChange={(event) => setDraftField('assignee', event.target.value)} /><small>名前はメモとして保持。me または GID は Asana に設定。</small></div>
+          <div className="field"><label htmlFor="candidate-assignee">担当者</label><input id="candidate-assignee" value={candidate.assignee ?? ''} maxLength={200} placeholder="名前 / me / Asana GID" onChange={(event) => setDraftField('assignee', event.target.value)} /></div>
           <div className="field"><label htmlFor="candidate-due">期限</label><input id="candidate-due" type="date" value={candidate.dueDate ?? ''} onChange={(event) => setDraftField('dueDate', event.target.value || null)} /></div>
         </div>
-        <details className="advanced"><summary>詳細設定 <span>必要なときだけ</span></summary><div className="advanced-grid">
+        <details className="advanced"><summary>詳細設定</summary><div className="advanced-grid">
           <div className="field"><label htmlFor="project-gid">プロジェクト GID</label><input id="project-gid" inputMode="numeric" value={candidate.projectGid ?? ''} onChange={(event) => setDraftField('projectGid', event.target.value)} /></div>
           <div className="field"><label htmlFor="section-gid">セクション GID</label><input id="section-gid" inputMode="numeric" value={candidate.sectionGid ?? ''} onChange={(event) => setDraftField('sectionGid', event.target.value)} /></div>
           <div className="field"><label htmlFor="tags">タグ GID</label><input id="tags" value={candidate.tagsText} placeholder="123, 456" onChange={(event) => setDraftField('tagsText', event.target.value)} /></div>
@@ -388,7 +378,7 @@ function App() {
 
       {registration && <section className="success-card" aria-live="polite"><div className="success-icon" aria-hidden="true">✓</div><div><strong>{registration.provider === 'Mock' ? 'モックへ登録しました' : 'Asanaへ登録しました'}</strong><p>{registration.externalTaskGid ? `Task ID: ${registration.externalTaskGid}` : '登録履歴を保存しました。'}</p>{registration.externalTaskUrl && <a href={registration.externalTaskUrl} target="_blank" rel="noreferrer">Asanaで確認する ↗</a>}</div><button type="button" onClick={reset}>続けて登録</button></section>}
       {message && <div className="error-message" role="alert"><span aria-hidden="true">!</span>{message}</div>}
-      <footer><span>抽出された入力内容と登録結果は、監査用の履歴としてサーバーに保存されます。</span><button type="button" onClick={reset} disabled={!rawText && !candidate}>入力をクリア</button></footer>
+      <footer><button type="button" onClick={reset} disabled={!rawText && !candidate}>入力をクリア</button></footer>
     </main>
   )
 }
