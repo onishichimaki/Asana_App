@@ -28,22 +28,41 @@ public static class DbInitializer
             await db.Database.EnsureCreatedAsync(cancellationToken);
         }
 
-        if (!await db.ApplicationSettings.AnyAsync(cancellationToken))
+        await UpsertSettingAsync(
+            db,
+            "TaskOrganization.Mode",
+            organizationOptions.Mode,
+            "The active task organizer implementation. Secrets are never stored here.",
+            cancellationToken);
+        await UpsertSettingAsync(
+            db,
+            "Integration.Asana.Mode",
+            asanaOptions.Mode,
+            "The active Asana integration mode. PAT is read from server configuration.",
+            cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task UpsertSettingAsync(
+        TaskCaptureDbContext db,
+        string key,
+        string value,
+        string description,
+        CancellationToken cancellationToken)
+    {
+        var setting = await db.ApplicationSettings.SingleOrDefaultAsync(x => x.Key == key, cancellationToken);
+        if (setting is null)
         {
-            db.ApplicationSettings.AddRange(
-                new ApplicationSetting
-                {
-                    Key = "TaskOrganization.Mode",
-                    Value = organizationOptions.Mode,
-                    Description = "The active task organizer implementation. Secrets are never stored here."
-                },
-                new ApplicationSetting
-                {
-                    Key = "Integration.Asana.Mode",
-                    Value = asanaOptions.Mode,
-                    Description = "The active Asana integration mode. PAT is read from server configuration."
-                });
-            await db.SaveChangesAsync(cancellationToken);
+            db.ApplicationSettings.Add(new ApplicationSetting
+            {
+                Key = key,
+                Value = value,
+                Description = description
+            });
+            return;
         }
+
+        setting.Value = value;
+        setting.Description = description;
     }
 }

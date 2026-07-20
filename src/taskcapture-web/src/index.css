@@ -1,4 +1,11 @@
-:root { font-family:'Yu Gothic UI','Hiragino Sans','Meiryo',system-ui,sans-serif; color:#17202a; background:#f6f7f9; font-synthesis:none; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
-html { min-width:320px; min-height:100%; background:#f6f7f9; }
-body { min-width:320px; min-height:100vh; margin:0; background:radial-gradient(circle at 50% 0,#fff 0,#f6f7f9 38%); }
-button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible { outline:3px solid rgba(95,91,215,.35); outline-offset:2px; }
+:root {
+  font-family:"Meiryo UI",Meiryo,"Yu Gothic UI","Hiragino Kaku Gothic ProN",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:#172033;
+  background:#f3f6fa;
+  font-synthesis:none;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+}
+html { min-height:100%; overflow-x:hidden; background:#f3f6fa; }
+body { min-height:100vh; margin:0; overflow-x:hidden; background:radial-gradient(circle at 50% -80px,#fff 0,#f3f6fa 44%); }
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible { outline:3px solid rgba(49,86,211,.35); outline-offset:2px; }

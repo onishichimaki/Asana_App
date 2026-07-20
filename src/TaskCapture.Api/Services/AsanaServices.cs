@@ -43,9 +43,11 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
             throw new InvalidOperationException("Asana API mode requires Integration:Asana:PersonalAccessToken.");
         }
 
-        if (candidate.ProjectGid is null && string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid))
+        var projectGid = NullIfWhiteSpace(candidate.ProjectGid) ?? NullIfWhiteSpace(_options.DefaultProjectGid);
+        if (projectGid is null && string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid))
         {
-            throw new InvalidOperationException("Asana API mode requires a project GID or DefaultWorkspaceGid.");
+            throw new InvalidOperationException(
+                "Asana API mode requires a candidate/default project GID or DefaultWorkspaceGid.");
         }
 
         var notes = candidate.Description;
@@ -66,13 +68,13 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
             data["assignee"] = candidate.Assignee;
         }
 
-        if (candidate.SectionGid is not null && candidate.ProjectGid is not null)
+        if (candidate.SectionGid is not null && projectGid is not null)
         {
-            data["memberships"] = new[] { new { project = candidate.ProjectGid, section = candidate.SectionGid } };
+            data["memberships"] = new[] { new { project = projectGid, section = candidate.SectionGid } };
         }
-        else if (candidate.ProjectGid is not null)
+        else if (projectGid is not null)
         {
-            data["projects"] = new[] { candidate.ProjectGid };
+            data["projects"] = new[] { projectGid };
         }
         else
         {
@@ -109,4 +111,7 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
         var url = task.TryGetProperty("permalink_url", out var urlElement) ? urlElement.GetString() : null;
         return new AsanaRegistrationResult(true, "AsanaApi", gid, url);
     }
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 }

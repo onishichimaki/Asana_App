@@ -1,13 +1,13 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "Reactの1画面から入力を整理・確認し、ASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "メイリオUI優先のReact 1画面でテキスト、議事録、画像OCR、音声を取り込み、整理・確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
       "name": "Responsive Web UI",
       "type": "React SPA",
-      "responsibility": "テキスト、貼り付け、Clipboard API、Web Speech API入力と候補確認・修正・登録を1画面で提供する。",
-      "main_inputs": ["利用者入力", "launcher clipboard message", "API response"],
+      "responsibility": "メイリオUIを優先し、テキスト、貼り付け、議事録ファイル、ブラウザー内画像OCR、Web Speech API入力と候補確認・修正・登録を1画面で提供する。",
+      "main_inputs": ["利用者テキスト", "TXT/MD/CSV", "JPEG/PNG/WebP", "音声", "launcher clipboard message", "API response"],
       "main_outputs": ["organize request", "candidate update", "registration request"],
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
     },
@@ -33,16 +33,25 @@
       "id": "task_organizer",
       "name": "Task Organizer",
       "type": "Replaceable domain service",
-      "responsibility": "入力からタイトル、内容、担当者、期限を決定的な日本語ルールで抽出する。",
+      "responsibility": "設定でRuleBasedまたはGeminiを選び、入力からタイトル、内容、担当者、期限を抽出する。Gemini失敗時は既定でRuleBasedへフォールバックする。",
       "main_inputs": ["raw text", "current Japan date"],
       "main_outputs": ["OrganizedTask"],
-      "source_files": ["src/TaskCapture.Api/Services/TaskOrganizer.cs", "tests/TaskCapture.Api.Tests/RuleBasedTaskOrganizerTests.cs"]
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
+    },
+    {
+      "id": "gemini_task_organizer",
+      "name": "Gemini Task Organizer",
+      "type": "AI provider adapter",
+      "responsibility": "Google Gen AI .NET SDKとJSON Schemaを使って候補1件を構造化し、JST基準日、最大長、nullable項目をOrganizedTaskへ安全に変換する。",
+      "main_inputs": ["raw text", "current Japan date", "server-side Gemini settings"],
+      "main_outputs": ["structured JSON", "OrganizedTask", "safe provider exception"],
+      "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs"]
     },
     {
       "id": "asana_integration",
       "name": "Asana Integration",
       "type": "External service adapter",
-      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使ってタスクを作成する。",
+      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。候補の明示project、既定project、既定workspaceの順で登録先を解決してタスクを作成する。",
       "main_inputs": ["confirmed candidate", "server-side Asana settings"],
       "main_outputs": ["provider result", "external GID", "permalink or safe error"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
@@ -71,7 +80,7 @@
       "id": "task_capture_screen",
       "name": "Task Capture 1画面",
       "type": "Responsive SPA screen",
-      "description": "入力、整理、候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
+      "description": "貼り付け、議事録、画像OCR、音声の4入口と、整理、候補編集、折りたたみ詳細設定、登録結果を段階的に同じ画面へ表示する。",
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css"]
     },
     {
@@ -196,6 +205,13 @@
   ],
   "external_integrations": [
     {
+      "id": "gemini_api",
+      "name": "Gemini API",
+      "type": "HTTPS AI API",
+      "description": "Google Gen AI .NET SDKからJSON Schema付きで呼び出す。APIキーはUser Secretsまたは配備先Secret Storeだけから読み、クライアント・DB・ログへ保存しない。gemini-3.5-flashの実通信をローカルInMemory構成で確認済み。",
+      "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/TaskCapture.Api.csproj", "README.md"]
+    },
+    {
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
@@ -210,11 +226,11 @@
       "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
     },
     {
-      "id": "browser_platform_apis",
-      "name": "Clipboard / Web Speech APIs",
+      "id": "browser_capture_apis",
+      "name": "Clipboard / File / OCR / Web Speech",
       "type": "Browser APIs",
-      "description": "テキスト貼り付けとja-JP音声入力。非対応時はテキストへフォールバックする。",
-      "source_files": ["src/taskcapture-web/src/App.tsx", "REQUIREMENTS.md"]
+      "description": "Clipboard、UTF-8/Shift_JIS議事録読込、Tesseract.js日本語OCR、ja-JP音声入力をブラウザー内で行い、抽出文字列だけをAPIへ渡す。",
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/package.json", "REQUIREMENTS.md"]
     },
     {
       "id": "webview2_runtime",
@@ -228,10 +244,10 @@
     {
       "id": "organize_flow",
       "name": "入力から候補",
-      "inputs": ["text / paste / voice / clipboard"],
-      "processing": ["React validation", "POST organize", "TaskRequest save", "RuleBased extraction", "TaskCandidate and AuditLog save"],
+      "inputs": ["text / paste / minutes / image OCR / voice / clipboard"],
+      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased or Gemini structured extraction", "RuleBased fallback on configured AI failure", "TaskCandidate and AuditLog save"],
       "outputs": ["editable candidate"],
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs"]
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
     },
     {
       "id": "registration_flow",
@@ -259,9 +275,15 @@
     },
     {
       "id": "web_stack",
-      "name": "React 19 / TypeScript 6 / Vite 8",
-      "description": "SPA実装、型検査、production bundle。",
+      "name": "React 19 / TypeScript 6 / Vite 8 / Tesseract.js 7",
+      "description": "SPA実装、型検査、production bundle、ブラウザー内日本語OCR。",
       "source_files": ["src/taskcapture-web/package.json", "src/taskcapture-web/vite.config.ts"]
+    },
+    {
+      "id": "google_genai_sdk",
+      "name": "Google.GenAI 1.14",
+      "description": "Gemini Developer APIの.NET 8 clientとJSON Schema構造化出力。provider固有処理はGeminiTaskOrganizer境界へ閉じ込める。",
+      "source_files": ["src/TaskCapture.Api/TaskCapture.Api.csproj", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
     },
     {
       "id": "webview2_sdk",
@@ -278,10 +300,10 @@
       "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "DECISIONS.md"]
     },
     {
-      "id": "real_integrations_unverified",
-      "name": "実SQL Server / Asana未接続",
-      "description": "provider、migration、adapterは実装済みだが、接続先とPATがないため実サービスsmoke testは未実施。",
-      "source_files": ["STATUS.md", "src/TaskCapture.Api/appsettings.json"]
+      "id": "local_integrations_only",
+      "name": "実連携検証はローカル限定",
+      "description": "DESKTOP-RQ3T767のSQL ServerとAsanaの限定projectでは実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
+      "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json"]
     },
     {
       "id": "speech_compatibility",
@@ -290,29 +312,23 @@
       "source_files": ["src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
     },
     {
-      "id": "visual_qa_environment",
-      "name": "自動ブラウザー目視QA未完",
-      "description": "browser control初期化競合のため、production HTML/asset HTTP応答とbuild/static responsive CSSで代替確認した。",
-      "source_files": ["STATUS.md", "src/taskcapture-web/src/App.css"]
+      "id": "ocr_first_load",
+      "name": "画像OCRの初回モデル取得",
+      "description": "初回OCR時にTesseract.jsの日本語言語モデル取得が必要。OCR精度は画像品質に依存するため、利用者が抽出結果と候補を修正できるUIを維持する。",
+      "source_files": ["README.md", "src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
     }
   ],
   "recommended_next_actions": [
     {
-      "id": "connect_github",
-      "name": "GitHub接続復旧とremote同期",
-      "description": "connectorを再認証し、Issue/PR/既定branchとローカル初期実装の差分を確認する。",
-      "source_files": ["STATUS.md", "DECISIONS.md"]
-    },
-    {
-      "id": "real_smoke_test",
-      "name": "限定環境で実連携smoke test",
-      "description": "SQL Server connectionとAsana PAT/workspace/project GIDをSecret Manager経由で設定する。",
-      "source_files": ["README.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
+      "id": "secure_deployment",
+      "name": "HTTPS限定配備",
+      "description": "配備先のSecret StoreへSQL Server接続とAsana PAT/project GIDを設定し、組織認証、TLS、rate limit、運用ログ保護を追加する。",
+      "source_files": ["README.md", "ARCHITECTURE.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
     },
     {
       "id": "device_qa",
       "name": "実端末QA",
-      "description": "iPhone/iPadのHTTPS URLで音声・clipboard・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
+      "description": "iPhone/iPadのHTTPS URLでカメラOCR・音声・clipboard・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
       "source_files": ["REQUIREMENTS.md", "src/TaskCapture.Launcher/LauncherApplicationContext.cs"]
     }
   ]

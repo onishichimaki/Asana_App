@@ -19,6 +19,10 @@ public sealed class HealthController(
         environment = environment.EnvironmentName,
         database = database.Value.Provider,
         organizer = organization.Value.Mode,
+        organizerModel = organization.Value.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
+            ? organization.Value.Gemini.Model
+            : null,
+        organizerFallback = organization.Value.FallbackToRuleBased,
         asana = asana.Value.Mode,
         timestampUtc = DateTimeOffset.UtcNow
     });
