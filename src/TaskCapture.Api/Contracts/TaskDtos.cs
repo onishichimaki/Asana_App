@@ -75,6 +75,10 @@ public sealed record RegistrationResponse(
     string? ExternalTaskGid,
     string? ExternalTaskUrl,
     string? ErrorMessage,
+    string? AssigneeResolutionStatus,
+    string? ResolvedAssigneeGid,
+    string? ResolvedAssigneeName,
+    string? WarningMessage,
     IReadOnlyList<SubtaskRegistrationResponse> Subtasks);
 
 public sealed record SubtaskRegistrationResponse(

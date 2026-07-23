@@ -1,11 +1,11 @@
 # STATUS
 
-最終更新: 2026-07-20
+最終更新: 2026-07-24
 
 ## 現在地
 
-- フェーズ: MVP完成、AIサブタスク分解・SQL Server・Asana親子登録経路まで実装済み
-- MVP 判定: Gemini/RuleBased、親子候補編集、SQL Server、Asana API/Mockの主要経路が完成。
+- フェーズ: MVP完成、担当者名解決と実Asana親子登録まで確認済み
+- MVP 判定: Gemini/RuleBased、親子候補編集、担当者名解決、SQL Server、Asana API/Mockの主要経路が完成。
 
 ## 完了
 
@@ -19,9 +19,11 @@
 - 登録前に最大10件のサブタスクを1行1件で追加・修正・削除できるUI
 - `ITaskOrganizer`境界を維持し、将来のAzure OpenAI adapter追加でUI・DBを変更しない構成
 - Asana REST API / Mock adapter とサーバー側 PAT 管理、親作成後の `POST /tasks/{task_gid}/subtasks`
+- workspaceユーザー一覧による担当者名の完全一致・一意な部分一致と、未解決時の安全な未割り当て・警告
+- Asanaが実際に返した担当者GID・表示名・解決状態・警告のSQL監査と完了画面表示
 - 候補未指定時のAsana既定project設定（`DefaultProjectGid`）
 - 親・成功済みサブタスクの二重登録防止と、`PartiallyRegistered` から失敗した子だけを再試行する処理
-- EF Core の8テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks SQL Server migration
+- EF Core の8テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit SQL Server migration
 - Development/Test の InMemory provider 差し替え
 - .NET User Secrets によるローカルSQL Server設定と環境変数による配備先差し替え
 - 再実行可能な `scripts/Test-SqlServerIntegration.ps1`
@@ -39,9 +41,9 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 20件成功、失敗0
+- xUnit: 25件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
-- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 2 migration と必須8テーブルを確認
+- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 3 migration と必須8テーブルを確認
 - 実SQL結合: 親子整理、Mock親子登録、API再起動後の履歴再取得、Users/親子候補/親子登録/設定/監査行を確認（`1|1|1|1|1|2|2|1`）
 - NuGet / npm dependency vulnerability scan: 既知脆弱性0
 - `dotnet format --verify-no-changes`: 成功
@@ -58,21 +60,27 @@
 - Geminiサブタスク実通信: `カレーを作る、大西` から親タイトル、担当者と「レシピを決める」「冷蔵庫の食材を確認する」「不足している食材を買う」「カレーを調理する」を生成
 - Mock親子登録: 親1件とサブタスク4件を登録し、成功後の再送で親GIDが変わらないことを確認
 - 部分失敗テスト: 2件目の子だけ初回失敗させ、再試行で親と成功済み子を作り直さず失敗した子だけを登録
+- 担当者名テスト: 「大西」→「大西 千茉季」の一意な部分一致と、同姓2名時に未割り当て・警告となることを確認
+- 実Asana親子登録: 親GID `1216837143593172`、子GID `1216837009090537` / `1216837008878522` を作成
+- 実Asana担当者解決: 「大西」を「大西努」/ GID `1216675064179055` へ解決し、親子へ割り当て、SQLへ `Resolved` として保存
+- 実通信で検出した新規サブタスクのレスポンス二重表示を修正し、0件から2件追加する再発テストを追加
 - 通常起動: SQL Server / Gemini（fallback有効）/ Asana API、Windows launcher応答を確認
 - API再疎通: SQL Server / Gemini / Asana APIをhealthで確認し、Gemini実通信でタイトル・担当者・期限を再抽出
 - compact UI QA: launcher相当520px幅とiPhone相当390px幅で横スクロール・console警告なし
 - Launcher実画面QA: 初期操作が1画面内に収まり、標準タイトルバーの最小化「－」と閉じる「×」を確認
 - サブタスクUI QA: launcher相当520px幅とiPhone相当390px幅で4件の編集欄を確認し、横スクロール・console警告なし
 - アーキテクチャ資料: JSON構文、HTML構文、全 `source_files` の存在確認に成功
+- Excel/CSVの可変レイアウトWBS取込: Phase 2の列マッピング、階層方式、テンプレート、preview、冪等な一括登録要件を設計済み
 
 ## 未完了 / 外部待ち
 
 - Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
 - 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
 - HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視は未設定。
-- Asana実環境の親タスク登録は既存スモークで確認済み。今回の親子機能はMockとHTTP要求テストで確認し、不要な実タスクを作らないため実Asanaへのサブタスク作成は未実行。
+- Excel/CSVの可変レイアウトWBS一括取込は、Phase 2の要件・設計までで実装未着手。
 
 ## 次に必要な作業
 
-1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
-2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
+1. Excel/CSV WBS取込のparser、自由列マッピング、テンプレート、preview、一括登録履歴をPhase 2として実装する。
+2. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
+3. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
