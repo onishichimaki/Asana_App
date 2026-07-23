@@ -11,7 +11,7 @@
 <body>
   <header class="hero">
     <div class="wrap">
-      <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-20</p>
+      <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-24</p>
       <h1>Task Capture for Asana</h1>
       <p>テキスト・議事録・画像OCR・音声をGeminiまたはルールで親タスクとサブタスク候補へ変え、確認後にAsanaへ渡す登録専用MVP。ファイル文字化はブラウザー内、AIキー・PAT・履歴はAPI境界の内側に置きます。</p>
       <div class="facts">
@@ -43,7 +43,7 @@
           </div></div>
           <div class="arrow">↓ adapter / EF Core ↓</div>
           <div class="lane"><p class="lane-label">DATA & EXTERNAL</p><div class="nodes">
-            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>8 tables · 2 migrations</small></button>
+            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>8 tables · 3 migrations</small></button>
             <button class="node" data-node="asana"><span class="type">REST adapter</span><strong>Asana / Mock</strong><small>server-side PAT only</small></button>
             <button class="node" data-node="audit"><span class="type">EF entities</span><strong>History & Audit</strong><small>UTC · correlation ID</small></button>
           </div></div>
@@ -67,7 +67,7 @@
         <div class="card"><span class="icon">U</span><div><strong>Users</strong><p>限定利用のclient key。資格情報なし。</p></div></div>
         <div class="card"><span class="icon">R</span><div><strong>TaskRequests → TaskCandidates</strong><p>原文、source、状態から編集可能な親候補へ。</p></div></div>
         <div class="card"><span class="icon">C</span><div><strong>TaskCandidateSubtasks</strong><p>親候補に従属する子のタイトルと順序。</p></div></div>
-        <div class="card"><span class="icon">A</span><div><strong>AsanaRegistrations</strong><p>親タスクの試行結果、provider、外部GID/URL。</p></div></div>
+        <div class="card"><span class="icon">A</span><div><strong>AsanaRegistrations</strong><p>親の試行結果、外部GID/URL、担当者解決status/GID/name/警告。</p></div></div>
         <div class="card"><span class="icon">AC</span><div><strong>AsanaSubtaskRegistrations</strong><p>子ごとの試行結果。成功済みは再作成しない。</p></div></div>
         <div class="card"><span class="icon">S</span><div><strong>ApplicationSettings</strong><p>mode等の非秘密メタデータ。</p></div></div>
         <div class="card"><span class="icon">L</span><div><strong>AuditLogs</strong><p>イベント、entity、correlation ID。</p></div></div>
@@ -76,7 +76,7 @@
 
     <div class="inventory" data-group="all integration">
       <section class="section"><div class="section-title"><h2>Integration boundary</h2><span>設定で差し替え</span></div><div class="cards">
-        <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>親POST /tasks、子POST /tasks/{gid}/subtasks。PATはAPI設定のみ。</p></div></div>
+        <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>GET workspace usersで名前解決 → 親POST /tasks → 子POST /tasks/{gid}/subtasks。</p></div></div>
         <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで親と0〜6件の子へ整理。実通信確認済み。</p></div></div>
         <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
         <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
@@ -86,21 +86,23 @@
         <div class="card"><span class="icon">1</span><div><strong>Capture</strong><p>端末入力・ファイル文字化 → React → validated HTTP JSON。</p></div></div>
         <div class="card"><span class="icon">2</span><div><strong>Organize</strong><p>TaskRequest → Gemini / RuleBased → 親候補 + 順序付きサブタスク。</p></div></div>
         <div class="card"><span class="icon">3</span><div><strong>Confirm</strong><p>親の基本4項目と子を編集。高度な項目は折りたたみ。</p></div></div>
-        <div class="card"><span class="icon">4</span><div><strong>Register</strong><p>親作成・保存 → 子作成・個別保存。部分失敗は未完了だけ再開。</p></div></div>
+        <div class="card"><span class="icon">4</span><div><strong>Register</strong><p>担当者名解決 → 親作成・実担当者保存 → 同じ担当者で子作成。部分失敗は再開。</p></div></div>
       </div></section>
     </div>
 
     <div class="inventory" data-group="all risk">
       <section class="section"><div class="section-title"><h2>Known risks / unknowns</h2><span>事実と分離</span></div><div class="cards">
         <div class="card risk critical"><span class="icon">!</span><div><strong>本格認証なし</strong><p>外部公開前に組織認証、TLS、rate limitが必要。</p></div></div>
-        <div class="card risk"><span class="icon">?</span><div><strong>実連携検証はローカル限定</strong><p>SQL ServerとAsana限定projectへの実登録は成功。HTTPS配備と運用監視は未検証。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>実連携検証はローカル限定</strong><p>SQL ServerとAsana限定projectへの担当者付き親子登録は成功。HTTPS配備と運用監視は未検証。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>OCR初回モデル取得</strong><p>初回のみ日本語モデル取得が必要。精度は画像品質に依存し、確認・修正を前提とする。</p></div></div>
         <div class="card risk"><span class="icon">↻</span><div><strong>Asana親子登録は非原子的</strong><p>各HTTP結果を逐次保存し、部分失敗時は未完了の子だけを再試行する。</p></div></div>
+        <div class="card risk"><span class="icon">人</span><div><strong>担当者名の同姓・表記差</strong><p>0件・複数一致は未割り当てと警告にし、誤割り当てを防ぐ。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
-        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
-        <div class="card"><span class="icon">2</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
+        <div class="card"><span class="icon">1</span><div><strong>可変レイアウトWBS取込</strong><p>XLSX/CSVの自由列・階層マッピング、テンプレート、preview、冪等な一括登録。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
+        <div class="card"><span class="icon">3</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
       </div></section>
     </div>
     <div class="footer-note">Machine-readable inventory: <strong>docs/architecture.json</strong> · Maintenance guide: <strong>docs/architecture_readme.md</strong> · 未確認事項は risks_or_unknowns にのみ記録します。</div>
@@ -114,9 +116,9 @@
       workflow:{type:'Application Service',name:'Task Workflow',description:'入力保存、親子候補生成・更新、親先行の冪等登録、部分失敗からの再開、状態遷移、監査を調停します。',flow:'validated DTO → parent/child entities → adapters → complete or partial registration response',sources:['src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Contracts/TaskDtos.cs']},
       organizer:{type:'Domain Service',name:'Task Organizer',description:'設定でRuleBasedまたはGeminiを選択し、親の基本項目とサブタスク候補を抽出します。ITaskOrganizer境界は将来のAzure OpenAIでも維持します。',flow:'raw text + Japan date → provider adapter → OrganizedTask with subtasks',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Services/TaskOrganizer.cs','src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs']},
       gemini:{type:'AI Adapter',name:'Gemini + fallback',description:'Google Gen AI .NET SDKとJSON Schemaで親候補と必要な0〜6件の実行可能なサブタスクを構造化します。キー未設定、timeout、API/応答エラーではRuleBasedへ自動フォールバックします。',flow:'raw text + server-side secret → Gemini API → validated OrganizedTask / RuleBased fallback',sources:['src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs']},
-      db:{type:'EF Core / SQL Server',name:'Persistence',description:'親子候補・登録結果を含む8テーブル、index、relationship、2 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs','src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs']},
-      asana:{type:'External Adapter',name:'Asana / Mock',description:'MockとAsana REST APIを設定で選択し、親を作った後にそのGIDへ子を登録します。Bearer PATはサーバー側以外に出ません。',flow:'confirmed parent/subtasks → POST tasks → POST tasks/{gid}/subtasks → safe results',sources:['src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs']},
-      audit:{type:'Data Model',name:'History & Audit',description:'入力、親子候補、親子登録試行、設定meta、イベントとcorrelation IDをUTCで保存します。',flow:'workflow events → 8 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs']}
+      db:{type:'EF Core / SQL Server',name:'Persistence',description:'親子候補・登録結果・担当者解決結果を含む8テーブル、index、relationship、3 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs','src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs','src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs']},
+      asana:{type:'External Adapter',name:'Asana / Mock',description:'自由文担当者をworkspaceユーザー名へ完全一致または一意な部分一致で解決し、親を作った後に同じ担当者GIDで子を登録します。0件・複数件では未割り当てと警告にします。',flow:'confirmed parent/subtasks → GET workspace users → POST tasks → POST tasks/{gid}/subtasks → actual assignee / warning / safe results',sources:['src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/ApiAsanaTaskServiceTests.cs']},
+      audit:{type:'Data Model',name:'History & Audit',description:'入力、親子候補、親子登録試行、担当者解決status/GID/name/警告、設定meta、イベントとcorrelation IDをUTCで保存します。',flow:'workflow events → 8 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs']}
     };
     const description=document.getElementById('detail-description'),flow=document.getElementById('detail-flow'),sources=document.getElementById('detail-sources'),name=document.getElementById('detail-name'),type=document.getElementById('detail-type');
     function selectNode(id){const item=details[id];if(!item)return;document.querySelectorAll('.node').forEach(n=>n.classList.toggle('active',n.dataset.node===id));name.textContent=item.name;type.textContent=item.type;description.textContent=item.description;flow.textContent=item.flow;sources.replaceChildren(...item.sources.map(path=>{const li=document.createElement('li');li.textContent=path;return li}))}

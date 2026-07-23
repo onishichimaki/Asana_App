@@ -69,6 +69,10 @@ public sealed class AsanaRegistration
     [MaxLength(500)] public string? ExternalTaskUrl { get; set; }
     [MaxLength(100)] public string? ErrorCode { get; set; }
     [MaxLength(1_000)] public string? ErrorMessage { get; set; }
+    [MaxLength(32)] public string? AssigneeResolutionStatus { get; set; }
+    [MaxLength(64)] public string? ResolvedAssigneeGid { get; set; }
+    [MaxLength(200)] public string? ResolvedAssigneeName { get; set; }
+    [MaxLength(500)] public string? WarningMessage { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 

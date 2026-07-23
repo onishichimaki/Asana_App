@@ -126,6 +126,10 @@ public sealed class TaskWorkflowService(
                 ExternalTaskUrl = parentResult.ExternalTaskUrl,
                 ErrorCode = parentResult.ErrorCode,
                 ErrorMessage = SafeMessage(parentResult.ErrorMessage),
+                AssigneeResolutionStatus = parentResult.AssigneeResolutionStatus,
+                ResolvedAssigneeGid = parentResult.ResolvedAssigneeGid,
+                ResolvedAssigneeName = parentResult.ResolvedAssigneeName,
+                WarningMessage = SafeWarning(parentResult.WarningMessage),
                 CreatedAtUtc = parentNow
             };
             db.AsanaRegistrations.Add(parentRegistration);
@@ -146,7 +150,12 @@ public sealed class TaskWorkflowService(
         foreach (var subtask in candidate.Subtasks.OrderBy(x => x.SortOrder))
         {
             if (HasSuccessfulRegistration(subtask)) continue;
-            var result = await CreateSubtaskSafelyAsync(candidate, subtask, parentRegistration.ExternalTaskGid!, cancellationToken);
+            var result = await CreateSubtaskSafelyAsync(
+                candidate,
+                subtask,
+                parentRegistration.ExternalTaskGid!,
+                parentRegistration.ResolvedAssigneeGid,
+                cancellationToken);
             db.AsanaSubtaskRegistrations.Add(new AsanaSubtaskRegistration
             {
                 TaskCandidateSubtaskId = subtask.Id,
@@ -268,7 +277,6 @@ public sealed class TaskWorkflowService(
                 UpdatedAtUtc = candidate.UpdatedAtUtc
             };
             db.TaskCandidateSubtasks.Add(subtask);
-            candidate.Subtasks.Add(subtask);
         }
     }
 
@@ -290,11 +298,17 @@ public sealed class TaskWorkflowService(
         TaskCandidate candidate,
         TaskCandidateSubtask subtask,
         string parentTaskGid,
+        string? resolvedAssigneeGid,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await asanaTaskService.CreateSubtaskAsync(candidate, subtask, parentTaskGid, cancellationToken);
+            return await asanaTaskService.CreateSubtaskAsync(
+                candidate,
+                subtask,
+                parentTaskGid,
+                resolvedAssigneeGid,
+                cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -345,6 +359,10 @@ public sealed class TaskWorkflowService(
         registration.ExternalTaskGid,
         registration.ExternalTaskUrl,
         errorMessage ?? registration.ErrorMessage,
+        registration.AssigneeResolutionStatus,
+        registration.ResolvedAssigneeGid,
+        registration.ResolvedAssigneeName,
+        registration.WarningMessage,
         subtasks.OrderBy(x => x.SortOrder).Select(subtask =>
         {
             var result = subtask.Registrations.OrderByDescending(x => x.CreatedAtUtc).FirstOrDefault(x => x.Succeeded)
@@ -364,4 +382,5 @@ public sealed class TaskWorkflowService(
 
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string? SafeMessage(string? value) => string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 1_000)];
+    private static string? SafeWarning(string? value) => string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 500)];
 }

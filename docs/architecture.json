@@ -51,9 +51,9 @@
       "id": "asana_integration",
       "name": "Asana Integration",
       "type": "External service adapter",
-      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。候補の明示project、既定project、既定workspaceの順で登録先を解決し、親タスクとサブタスクを作成する。",
-      "main_inputs": ["confirmed candidate", "server-side Asana settings"],
-      "main_outputs": ["provider result", "external GID", "permalink or safe error"],
+      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。自由文担当者をworkspaceユーザー名へ完全一致または一意な部分一致で安全に解決し、親タスクと同じ担当者のサブタスクを作成する。",
+      "main_inputs": ["confirmed candidate", "free-text assignee", "server-side Asana settings"],
+      "main_outputs": ["provider result", "external GID", "resolved assignee GID/name/status", "permalink, warning or safe error"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
     },
     {
@@ -63,7 +63,7 @@
       "responsibility": "親子候補・登録結果を含む8テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
       "main_inputs": ["entities", "connection configuration"],
       "main_outputs": ["SQL Server rows", "migration DDL"],
-      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs"]
+      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs"]
     },
     {
       "id": "windows_launcher",
@@ -157,8 +157,8 @@
       {
         "id": "asana_registrations",
         "name": "AsanaRegistrations",
-        "description": "親タスクのMock/Asana provider、成功、外部GID/URL、安全なエラー概要を試行ごとに保持する。",
-        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+        "description": "親タスクのprovider、成功、外部GID/URL、担当者解決status/GID/name、利用者向け警告、安全なエラー概要を試行ごとに保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs"]
       },
       {
         "id": "asana_subtask_registrations",
@@ -239,15 +239,15 @@
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
-      "description": "親はPOST /api/1.0/tasks、子はPOST /api/1.0/tasks/{task_gid}/subtasks。Bearer PATはサーバー設定だけから読み取る。",
+      "description": "GET /api/1.0/workspaces/{workspace_gid}/usersで担当者名を安全にGIDへ解決し、親はPOST /api/1.0/tasks、子はPOST /api/1.0/tasks/{task_gid}/subtasksへ同じGIDを送る。Bearer PATはサーバー設定だけから読み取る。",
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/appsettings.json"]
     },
     {
       "id": "sql_server",
       "name": "SQL Server",
       "type": "Relational database",
-      "description": "EF Core SqlServer provider、InitialCreate、AddTaskCandidateSubtasks migrationで親子候補と外部登録履歴を保存する。",
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs"]
+      "description": "EF Core SqlServer providerと3 migrationで親子候補、外部登録、担当者解決結果を保存する。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs"]
     },
     {
       "id": "browser_capture_apis",
@@ -277,8 +277,8 @@
       "id": "registration_flow",
       "name": "候補からAsana登録",
       "inputs": ["confirmed parent candidate", "confirmed subtasks"],
-      "processing": ["DataAnnotations", "parent idempotency lookup", "parent create and save", "per-subtask idempotency lookup", "subtask create and save", "partial failure state and audit save"],
-      "outputs": ["parent and subtask external GIDs/URLs", "safe partial or full error"],
+      "processing": ["DataAnnotations", "parent idempotency lookup", "workspace user name exact/unique partial resolution", "parent create and actual assignee save", "per-subtask idempotency lookup", "subtask create with resolved assignee", "partial failure state and audit save"],
+      "outputs": ["parent and subtask external GIDs/URLs", "resolved assignee GID/name/status", "safe warning, partial or full error"],
       "source_files": ["src/TaskCapture.Api/Contracts/TaskDtos.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
     },
     {
@@ -326,7 +326,7 @@
     {
       "id": "local_integrations_only",
       "name": "実連携検証はローカル限定",
-      "description": "DESKTOP-RQ3T767のSQL ServerとAsanaの限定projectでは実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
+      "description": "DESKTOP-RQ3T767のSQL ServerとAsanaの限定projectでは、自由文担当者の一意解決と親1件・子2件の実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
       "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json"]
     },
     {
@@ -346,9 +346,21 @@
       "name": "Asana親子登録は非原子的",
       "description": "親作成と各サブタスク作成は別HTTP要求で単一トランザクションにできない。各結果をSQL Serverへ逐次保存し、PartiallyRegisteredから未完了の子だけを再試行する。",
       "source_files": ["src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "DECISIONS.md"]
+    },
+    {
+      "id": "assignee_name_ambiguity",
+      "name": "担当者名の同姓・表記差",
+      "description": "自由文が0件または複数ユーザーに一致する場合は誤割り当てを避けて未割り当てで登録し、UIとSQLへ警告を残す。実環境では「大西」から「大西努」への一意解決を確認済み。",
+      "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "tests/TaskCapture.Api.Tests/ApiAsanaTaskServiceTests.cs", "STATUS.md"]
     }
   ],
   "recommended_next_actions": [
+    {
+      "id": "wbs_import",
+      "name": "可変レイアウトWBS取込",
+      "description": "XLSX/CSVのsheet・header・列・階層を利用者が指定し、プロジェクト別ImportProfile、親子preview、ImportBatches/ImportRows、行hash、失敗行再試行を実装する。",
+      "source_files": ["REQUIREMENTS.md", "ARCHITECTURE.md", "IMPLEMENTATION_PLAN.md", "DECISIONS.md"]
+    },
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",

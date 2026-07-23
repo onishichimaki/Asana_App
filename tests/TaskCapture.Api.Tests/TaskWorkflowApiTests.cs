@@ -65,6 +65,9 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.True(registration.Succeeded);
         Assert.Equal("Mock", registration.Provider);
         Assert.StartsWith("mock-", registration.ExternalTaskGid);
+        Assert.Equal("Mock", registration.AssigneeResolutionStatus);
+        Assert.Equal("me", registration.ResolvedAssigneeName);
+        Assert.Null(registration.WarningMessage);
         Assert.Equal(2, registration.Subtasks.Count);
         Assert.All(registration.Subtasks, subtask => Assert.True(subtask.Succeeded));
 
@@ -83,6 +86,9 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.Equal(1, await db.TaskCandidates.CountAsync());
         Assert.Equal(2, await db.TaskCandidateSubtasks.CountAsync());
         Assert.Equal(1, await db.AsanaRegistrations.CountAsync());
+        Assert.Equal(
+            "Mock",
+            await db.AsanaRegistrations.Select(x => x.AssigneeResolutionStatus).SingleAsync());
         Assert.Equal(2, await db.AsanaSubtaskRegistrations.CountAsync());
         Assert.Equal(2, await db.ApplicationSettings.CountAsync());
         Assert.Equal(

@@ -27,11 +27,11 @@ flowchart LR
 
 | コンポーネント | 責務 |
 |---|---|
-| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補の編集、登録結果表示 |
+| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補の編集、実際に解決された担当者と警告の表示 |
 | Task workflow | 状態遷移、親子候補のDB保存、監査、親→子の順序制御、部分失敗時の再開 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出と、明示された箇条書きのサブタスク化 |
 | Gemini organizer | GeminiのJSON Schema出力を親候補と0〜6件の実行可能なサブタスクへ変換し、未設定・失敗時はRuleBasedへフォールバック |
-| Asana services | Mock と REST API の設定切り替え、親タスク/サブタスク登録、候補/既定project/workspaceの登録先解決 |
+| Asana services | Mock と REST API の設定切り替え、workspaceユーザー名の安全なGID解決、親タスク/サブタスク登録、候補/既定project/workspaceの登録先解決 |
 | EF Core | SQL Server スキーマ、履歴、登録・監査データ |
 | Launcher | tray、グローバルホットキー、WebView2、クリップボード橋渡し、自動クローズ |
 
@@ -60,7 +60,7 @@ erDiagram
     TaskRequests { guid Id PK guid UserId FK string RawText string Source string Status datetime CreatedAtUtc }
     TaskCandidates { guid Id PK guid TaskRequestId FK string Title string Description string Assignee date DueDate string AdvancedSettingsJson }
     TaskCandidateSubtasks { guid Id PK guid TaskCandidateId FK string Title int SortOrder }
-    AsanaRegistrations { guid Id PK guid TaskCandidateId FK bool Succeeded string ExternalTaskGid string ExternalTaskUrl string ErrorCode }
+    AsanaRegistrations { guid Id PK guid TaskCandidateId FK bool Succeeded string ExternalTaskGid string ResolvedAssigneeGid string ResolvedAssigneeName string AssigneeResolutionStatus }
     AsanaSubtaskRegistrations { guid Id PK guid TaskCandidateSubtaskId FK bool Succeeded string ExternalTaskGid string ExternalTaskUrl string ErrorCode }
     ApplicationSettings { string Key PK string Value string Description }
     AuditLogs { guid Id PK guid UserId string EventType string EntityType string EntityId string Detail }
@@ -72,7 +72,24 @@ erDiagram
 
 `Received → Organized → Edited（任意）→ Registering → Registered / PartiallyRegistered / Failed`
 
-親タスクを先に登録してGIDを保存し、その後にサブタスクを `POST /tasks/{task_gid}/subtasks` で順に登録する。部分失敗時は成功済みの親・子を再作成せず、失敗した子だけを次回再試行する。整理失敗・登録失敗でも `TaskRequests` と `AuditLogs` を保存し、再現に必要な相関 ID を API Problem Details に返す。
+自由文の担当者は `GET /workspaces/{workspace_gid}/users` で取得した名前へ完全一致、次に一意な部分一致を行う。0件・複数件・取得失敗では誤割り当てせず、親タスクを未割り当てで登録して警告を返す。親タスクを先に登録してGIDとAsanaが返した担当者を保存し、その後に同じ担当者GIDでサブタスクを `POST /tasks/{task_gid}/subtasks` から順に登録する。部分失敗時は成功済みの親・子を再作成せず、失敗した子だけを次回再試行する。
+
+## 次期WBS取込の境界
+
+可変レイアウトのExcel/CSV取込は通常の1件入力画面へ混在させず、次の独立フローとして追加する。
+
+```mermaid
+flowchart LR
+    File["XLSX / CSV"] --> Parse["ブラウザー内解析"]
+    Parse --> Mapping["sheet・header・列・階層を指定"]
+    Mapping --> Preview["親子プレビューと検証"]
+    Preview --> Batch["確認済み正規化行だけをBatch APIへ送信"]
+    Batch --> Db2["ImportBatches / ImportRows"]
+    Batch --> Asana2["親優先・行単位のAsana登録"]
+    Mapping --> Profile["プロジェクト別ImportProfile"]
+```
+
+最小構成は `ImportProfiles`、`ImportBatches`、`ImportRows` を追加し、親ID列または階層レベル列のどちらかを選択する。previewとdry-runを必須にし、batch/row/hashによる重複防止と失敗行だけの再試行を行う。これは設計済みの次期機能で、現行migrationにはまだ含まれない。
 
 ## セキュリティ境界
 
@@ -86,4 +103,4 @@ erDiagram
 
 ## 実装根拠と引き継ぎ
 
-人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、実 SQL Server、Asana限定projectへの登録はローカル限定環境で実通信まで検証済みである。未確認のHTTPS配備と端末 QAは inventory の `risks_or_unknowns` に分離している。
+人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、実 SQL Server、Asana限定projectへの担当者付き親子登録はローカル限定環境で実通信まで検証済みである。未確認のHTTPS配備、端末 QA、未実装のWBS取込は inventory のリスクまたは次アクションへ分離している。

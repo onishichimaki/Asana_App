@@ -8,6 +8,45 @@ namespace TaskCapture.Api.Tests;
 public sealed class TaskWorkflowServiceTests
 {
     [Fact]
+    public async Task RegisterAsync_ReturnsEachNewlyAddedSubtaskOnce()
+    {
+        var options = new DbContextOptionsBuilder<TaskCaptureDbContext>()
+            .UseInMemoryDatabase($"TaskWorkflowService-NewSubtasks-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new TaskCaptureDbContext(options);
+        var workflow = new TaskWorkflowService(
+            db,
+            new ParentOnlyOrganizer(),
+            new MockAsanaTaskService(),
+            TimeProvider.System);
+        var organized = await workflow.OrganizeAsync(
+            new OrganizeTaskRequest { RawText = "親タスク", Source = "text" },
+            "new-subtasks-test",
+            "organize-trace",
+            CancellationToken.None);
+        var update = new CandidateUpdateRequest
+        {
+            Title = organized.Candidate.Title,
+            Description = organized.Candidate.Description,
+            Subtasks = ["新しく追加した手順1", "新しく追加した手順2"]
+        };
+
+        var result = await workflow.RegisterAsync(
+            organized.Candidate.Id,
+            update,
+            "register-trace",
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, result.Subtasks.Count);
+        Assert.Equal(
+            ["新しく追加した手順1", "新しく追加した手順2"],
+            result.Subtasks.Select(x => x.Title));
+        Assert.Equal(2, await db.TaskCandidateSubtasks.CountAsync());
+        Assert.Equal(2, await db.AsanaSubtaskRegistrations.CountAsync());
+    }
+
+    [Fact]
     public async Task RegisterAsync_RetriesOnlyFailedSubtasksWithoutDuplicatingParent()
     {
         var options = new DbContextOptionsBuilder<TaskCaptureDbContext>()
@@ -72,6 +111,12 @@ public sealed class TaskWorkflowServiceTests
                 ["最初の手順", "再試行する手順"]));
     }
 
+    private sealed class ParentOnlyOrganizer : ITaskOrganizer
+    {
+        public Task<OrganizedTask> OrganizeAsync(string rawText, CancellationToken cancellationToken) =>
+            Task.FromResult(new OrganizedTask("親タスク", "親タスクの説明", null, null, []));
+    }
+
     private sealed class FlakySubtaskAsanaService : IAsanaTaskService
     {
         public int ParentCreateCount { get; private set; }
@@ -89,6 +134,7 @@ public sealed class TaskWorkflowServiceTests
             TaskCandidate candidate,
             TaskCandidateSubtask subtask,
             string parentTaskGid,
+            string? resolvedAssigneeGid,
             CancellationToken cancellationToken)
         {
             SubtaskCreateCounts.TryGetValue(subtask.Title, out var current);

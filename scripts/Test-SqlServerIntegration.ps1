@@ -154,7 +154,8 @@ SELECT CONCAT(
     (SELECT COUNT(*) FROM TaskCandidates WHERE TaskRequestId='$requestId'), '|',
     (SELECT COUNT(*) FROM AsanaRegistrations r
         JOIN TaskCandidates c ON c.Id=r.TaskCandidateId
-        WHERE c.TaskRequestId='$requestId' AND r.Succeeded=1 AND r.Provider='Mock'), '|',
+        WHERE c.TaskRequestId='$requestId' AND r.Succeeded=1 AND r.Provider='Mock'
+          AND r.AssigneeResolutionStatus='Mock' AND r.ResolvedAssigneeName='me'), '|',
     (SELECT COUNT(*) FROM TaskCandidateSubtasks s
         JOIN TaskCandidates c ON c.Id=s.TaskCandidateId
         WHERE c.TaskRequestId='$requestId'), '|',
