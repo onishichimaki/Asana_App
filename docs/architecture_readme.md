@@ -27,4 +27,4 @@ print("html_parse_ok")
 '@ | python -
 ```
 
-DBスキーマ変更時は EF Core migration、ルート `ARCHITECTURE.md`、この3ファイルを同じ変更で更新する。親子登録、担当者名解決、project/section一覧取得のように複数の外部要求をまたぐ処理では、実際に保存する外部GID・警告、部分成功状態、冪等な再試行を `registration_flow` とリスクにも記録する。AI provider、構造化出力、フォールバックを変更した場合は、`external_integrations`、`dependencies`、`organize_flow`、リスクを同期する。WBSのparser、自動推測と説明付きマッピング、開始日、登録先選択、階層方式、profile/batch/row、行hashを変更した場合は、`wbs_import_ui`、`wbs_import_service`、`wbs_import_flow`、3つのWBSテーブルと依存ライブラリを同期する。
+DBスキーマ変更時は EF Core migration、ルート `ARCHITECTURE.md`、この3ファイルを同じ変更で更新する。親子登録、担当者名解決、project/section一覧取得のように複数の外部要求をまたぐ処理では、実際に保存する外部GID・警告、部分成功状態、冪等な再試行を `registration_flow` とリスクにも記録する。AI provider、構造化出力、フォールバックを変更した場合は、`external_integrations`、`dependencies`、`organize_flow`、リスクを同期する。WBSのparser、自動推測、3ステップ導線、専門設定の段階表示、PC表／スマホカード、開始日、登録先選択、階層方式、profile/batch/row、行hashを変更した場合は、`wbs_import_ui`、`wbs_import_service`、`wbs_import_flow`、3つのWBSテーブルと依存ライブラリを同期する。

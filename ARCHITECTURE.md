@@ -30,7 +30,7 @@ flowchart LR
 | コンポーネント | 責務 |
 |---|---|
 | React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補、開始日・期限、登録先の編集、実際に解決された担当者と警告の表示 |
-| WBS UI | XLSX/CSVのブラウザー内解析、見出し行・列の自動推測と説明付き自由マッピング、4階層方式、開始日・対象列、複数テンプレート、project/section選択、編集可能preview、最終確認、一括登録・エラーCSV |
+| WBS UI | 「ファイル → 読取確認 → 登録」の3ステップ、XLSX/CSVのブラウザー内解析、見出し行・列の自動推測、通常は閉じた自由マッピング、4階層方式、開始日・対象列、複数テンプレート、project/section選択、PC表／スマホカードの編集preview、最終確認、一括登録・エラーCSV |
 | Task workflow | 状態遷移、親子候補のDB保存、監査、親→子の順序制御、部分失敗時の再開 |
 | WBS import workflow | server dry-run、行単位検証、親優先登録、row hash重複防止、部分失敗からの再開、profile/batch/row監査 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出と、明示された箇条書きのサブタスク化 |
