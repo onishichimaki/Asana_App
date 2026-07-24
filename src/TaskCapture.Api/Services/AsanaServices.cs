@@ -24,9 +24,14 @@ public sealed record AsanaImportTask(
     string Title,
     string Description,
     string? Assignee,
+    DateOnly? StartDate,
     DateOnly? DueDate,
     string? ProjectGid,
     string? SectionGid);
+
+public sealed record AsanaProjectOption(string Gid, string Name);
+public sealed record AsanaSectionOption(string Gid, string Name);
+public sealed record AsanaProjectCatalog(string? DefaultProjectGid, IReadOnlyList<AsanaProjectOption> Projects);
 
 public interface IAsanaTaskService
 {
@@ -43,7 +48,15 @@ public interface IAsanaTaskService
         CancellationToken cancellationToken);
 }
 
-public sealed class MockAsanaTaskService : IAsanaTaskService
+public interface IAsanaMetadataService
+{
+    Task<AsanaProjectCatalog> GetProjectsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<AsanaSectionOption>> GetSectionsAsync(
+        string projectGid,
+        CancellationToken cancellationToken);
+}
+
+public sealed class MockAsanaTaskService : IAsanaTaskService, IAsanaMetadataService
 {
     public Task<AsanaRegistrationResult> CreateTaskAsync(TaskCandidate candidate, CancellationToken cancellationToken)
     {
@@ -88,11 +101,37 @@ public sealed class MockAsanaTaskService : IAsanaTaskService
             ResolvedAssigneeName: NullIfWhiteSpace(task.Assignee)));
     }
 
+    public Task<AsanaProjectCatalog> GetProjectsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        const string defaultProjectGid = "1000000000000001";
+        return Task.FromResult(new AsanaProjectCatalog(
+            defaultProjectGid,
+            [
+                new(defaultProjectGid, "モック・既定プロジェクト"),
+                new("1000000000000002", "モック・給食プロジェクト")
+            ]));
+    }
+
+    public Task<IReadOnlyList<AsanaSectionOption>> GetSectionsAsync(
+        string projectGid,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        IReadOnlyList<AsanaSectionOption> result =
+        [
+            new("2000000000000001", "未着手"),
+            new("2000000000000002", "進行中")
+        ];
+        return Task.FromResult(result);
+    }
+
     private static string? NullIfWhiteSpace(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
-public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOptions> options) : IAsanaTaskService
+public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOptions> options)
+    : IAsanaTaskService, IAsanaMetadataService
 {
     private const string TaskResponseFields = "gid,permalink_url,assignee.gid,assignee.name";
     private readonly AsanaOptions _options = options.Value;
@@ -121,6 +160,7 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
         {
             ["name"] = candidate.Title,
             ["notes"] = notes,
+            ["start_on"] = candidate.StartDate?.ToString("yyyy-MM-dd"),
             ["due_on"] = candidate.DueDate?.ToString("yyyy-MM-dd")
         };
         if (assignee.Gid is not null)
@@ -176,6 +216,7 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
         var data = new Dictionary<string, object?>
         {
             ["name"] = subtask.Title,
+            ["start_on"] = candidate.StartDate?.ToString("yyyy-MM-dd"),
             ["due_on"] = candidate.DueDate?.ToString("yyyy-MM-dd")
         };
         if (assigneeGid is not null)
@@ -202,6 +243,7 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
         {
             ["name"] = task.Title,
             ["notes"] = task.Description,
+            ["start_on"] = task.StartDate?.ToString("yyyy-MM-dd"),
             ["due_on"] = task.DueDate?.ToString("yyyy-MM-dd")
         };
         if (assignee.Gid is not null)
@@ -244,6 +286,97 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
             assignee,
             "Asana rejected a WBS task registration. Check server logs and integration settings.",
             cancellationToken);
+    }
+
+    public async Task<AsanaProjectCatalog> GetProjectsAsync(CancellationToken cancellationToken)
+    {
+        EnsureConfigured();
+        var workspaceGid = NullIfWhiteSpace(_options.DefaultWorkspaceGid)
+            ?? throw new InvalidOperationException(
+                "Asanaプロジェクト一覧にはサーバー側のDefaultWorkspaceGid設定が必要です。");
+        var projects = new List<AsanaProjectOption>();
+        string? offset = null;
+        do
+        {
+            var requestUri =
+                $"workspaces/{Uri.EscapeDataString(workspaceGid)}/projects?archived=false&limit=100&opt_fields=gid,name";
+            if (offset is not null)
+            {
+                requestUri += $"&offset={Uri.EscapeDataString(offset)}";
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+            AddAuthorization(request);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException("Asanaプロジェクト一覧を取得できませんでした。");
+            }
+
+            await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+            projects.AddRange(document.RootElement.GetProperty("data")
+                .EnumerateArray()
+                .Select(element => new AsanaProjectOption(
+                    element.GetProperty("gid").GetString() ?? string.Empty,
+                    element.GetProperty("name").GetString() ?? string.Empty))
+                .Where(project => project.Gid.Length > 0 && project.Name.Length > 0));
+            offset = NextOffset(document.RootElement);
+        }
+        while (offset is not null);
+
+        return new AsanaProjectCatalog(
+            NullIfWhiteSpace(_options.DefaultProjectGid),
+            projects
+                .DistinctBy(project => project.Gid)
+                .OrderBy(project => project.Name, StringComparer.Create(
+                    System.Globalization.CultureInfo.GetCultureInfo("ja-JP"),
+                    ignoreCase: true))
+                .ToArray());
+    }
+
+    public async Task<IReadOnlyList<AsanaSectionOption>> GetSectionsAsync(
+        string projectGid,
+        CancellationToken cancellationToken)
+    {
+        EnsureConfigured();
+        var sections = new List<AsanaSectionOption>();
+        string? offset = null;
+        do
+        {
+            var requestUri =
+                $"projects/{Uri.EscapeDataString(projectGid)}/sections?limit=100&opt_fields=gid,name";
+            if (offset is not null)
+            {
+                requestUri += $"&offset={Uri.EscapeDataString(offset)}";
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+            AddAuthorization(request);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException("Asanaセクション一覧を取得できませんでした。");
+            }
+
+            await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+            sections.AddRange(document.RootElement.GetProperty("data")
+                .EnumerateArray()
+                .Select(element => new AsanaSectionOption(
+                    element.GetProperty("gid").GetString() ?? string.Empty,
+                    element.GetProperty("name").GetString() ?? string.Empty))
+                .Where(section => section.Gid.Length > 0 && section.Name.Length > 0));
+            offset = NextOffset(document.RootElement);
+        }
+        while (offset is not null);
+
+        return sections
+            .DistinctBy(section => section.Gid)
+            .OrderBy(section => section.Name, StringComparer.Create(
+                System.Globalization.CultureInfo.GetCultureInfo("ja-JP"),
+                ignoreCase: true))
+            .ToArray();
     }
 
     private async Task<AssigneeResolution> ResolveAssigneeAsync(
@@ -432,6 +565,13 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
 
     private static string? NullIfWhiteSpace(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? NextOffset(JsonElement root) =>
+        root.TryGetProperty("next_page", out var nextPage)
+        && nextPage.ValueKind == JsonValueKind.Object
+        && nextPage.TryGetProperty("offset", out var offsetElement)
+            ? NullIfWhiteSpace(offsetElement.GetString())
+            : null;
 
     private sealed record AsanaUser(string? Gid, string? Name);
     private sealed record AssigneeResolution(

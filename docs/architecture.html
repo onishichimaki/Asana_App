@@ -31,7 +31,7 @@
         <div class="lanes">
           <div class="lane"><p class="lane-label">CLIENT SURFACES</p><div class="nodes">
             <button class="node active" data-node="web"><span class="type">React SPA</span><strong>Responsive Web UI</strong><small>text · minutes · image OCR · voice</small></button>
-            <button class="node" data-node="wbs"><span class="type">React batch UI</span><strong>WBS Import UI</strong><small>XLSX/CSV · mapping · preview</small></button>
+            <button class="node" data-node="wbs"><span class="type">React batch UI</span><strong>WBS Import UI</strong><small>auto mapping · destination · preview</small></button>
             <button class="node" data-node="launcher"><span class="type">WinForms</span><strong>Windows Launcher</strong><small>tray · Ctrl+Shift+A</small></button>
             <button class="node" data-node="webview"><span class="type">WebView2</span><strong>Launcher Bridge</strong><small>clipboard · autoclose</small></button>
           </div></div>
@@ -45,7 +45,7 @@
           </div></div>
           <div class="arrow">↓ adapter / EF Core ↓</div>
           <div class="lane"><p class="lane-label">DATA & EXTERNAL</p><div class="nodes">
-            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>11 tables · 4 migrations</small></button>
+            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>11 tables · 5 migrations</small></button>
             <button class="node" data-node="asana"><span class="type">REST adapter</span><strong>Asana / Mock</strong><small>server-side PAT only</small></button>
             <button class="node" data-node="audit"><span class="type">EF entities</span><strong>History & Audit</strong><small>UTC · correlation ID</small></button>
           </div></div>
@@ -71,20 +71,20 @@
       </div></section>
       <section class="section"><div class="section-title"><h2>Database</h2><span>EF Core migration</span></div><div class="cards">
         <div class="card"><span class="icon">U</span><div><strong>Users</strong><p>限定利用のclient key。資格情報なし。</p></div></div>
-        <div class="card"><span class="icon">R</span><div><strong>TaskRequests → TaskCandidates</strong><p>原文、source、状態から編集可能な親候補へ。</p></div></div>
+        <div class="card"><span class="icon">R</span><div><strong>TaskRequests → TaskCandidates</strong><p>原文、source、開始日・期限、状態から編集可能な親候補へ。</p></div></div>
         <div class="card"><span class="icon">C</span><div><strong>TaskCandidateSubtasks</strong><p>親候補に従属する子のタイトルと順序。</p></div></div>
         <div class="card"><span class="icon">A</span><div><strong>AsanaRegistrations</strong><p>親の試行結果、外部GID/URL、担当者解決status/GID/name/警告。</p></div></div>
         <div class="card"><span class="icon">AC</span><div><strong>AsanaSubtaskRegistrations</strong><p>子ごとの試行結果。成功済みは再作成しない。</p></div></div>
         <div class="card"><span class="icon">S</span><div><strong>ApplicationSettings</strong><p>mode等の非秘密メタデータ。</p></div></div>
         <div class="card"><span class="icon">L</span><div><strong>AuditLogs</strong><p>イベント、entity、correlation ID。</p></div></div>
         <div class="card"><span class="icon">W</span><div><strong>WbsImportProfiles</strong><p>layout signature、sheet・行、列・階層mapping、登録先。</p></div></div>
-        <div class="card"><span class="icon">WB</span><div><strong>WbsImportBatches → WbsImportRows</strong><p>親子自己参照、row hash、行別Asana結果、再試行状態。</p></div></div>
+        <div class="card"><span class="icon">WB</span><div><strong>WbsImportBatches → WbsImportRows</strong><p>親子自己参照、開始日・期限、row hash、行別Asana結果、再試行状態。</p></div></div>
       </div></section>
     </div>
 
     <div class="inventory" data-group="all integration">
       <section class="section"><div class="section-title"><h2>Integration boundary</h2><span>設定で差し替え</span></div><div class="cards">
-        <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>GET workspace usersで名前解決 → 親POST /tasks → 子POST /tasks/{gid}/subtasks。</p></div></div>
+        <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>project/section一覧 → 担当者名解決 → 開始日付きの親子タスク登録。</p></div></div>
         <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで親と0〜6件の子へ整理。実通信確認済み。</p></div></div>
         <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
         <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
@@ -93,9 +93,9 @@
       <section class="section"><div class="section-title"><h2>Data flow</h2><span>同期MVP</span></div><div class="cards">
         <div class="card"><span class="icon">1</span><div><strong>Capture</strong><p>端末入力・ファイル文字化 → React → validated HTTP JSON。</p></div></div>
         <div class="card"><span class="icon">2</span><div><strong>Organize</strong><p>TaskRequest → Gemini / RuleBased → 親候補 + 順序付きサブタスク。</p></div></div>
-        <div class="card"><span class="icon">3</span><div><strong>Confirm</strong><p>親の基本4項目と子を編集。高度な項目は折りたたみ。</p></div></div>
+        <div class="card"><span class="icon">3</span><div><strong>Confirm</strong><p>親の内容・担当者・開始日・期限と子を編集。登録先は名前で選択。</p></div></div>
         <div class="card"><span class="icon">4</span><div><strong>Register</strong><p>担当者名解決 → 親作成・実担当者保存 → 同じ担当者で子作成。部分失敗は再開。</p></div></div>
-        <div class="card"><span class="icon">W</span><div><strong>WBS import</strong><p>XLSX/CSV → 自由列・4階層方式 → 編集preview → server dry-run → 親優先の行別登録。</p></div></div>
+        <div class="card"><span class="icon">W</span><div><strong>WBS import</strong><p>XLSX/CSV → 見出し・列の自動推測 → 登録先選択 → 編集preview → 最終確認 → 親優先登録。</p></div></div>
       </div></section>
     </div>
 
@@ -119,7 +119,7 @@
   <script>
     const details={
       web:{type:'React SPA',name:'Responsive Web UI',description:'メイリオUIを優先し、通常入力とWBS一括取込を明確な2モードで提供します。',flow:'利用者/ファイル/launcher message → browser extraction or normalization → HTTP JSON → editable parent/subtasks / row results',sources:['src/taskcapture-web/src/App.tsx','src/taskcapture-web/src/WbsImport.tsx','src/taskcapture-web/src/App.css','src/taskcapture-web/package.json']},
-      wbs:{type:'React batch UI',name:'WBS Import UI',description:'XLSX/CSVをブラウザー内で解析し、sheet・行・自由列・4階層方式、複数profile、編集preview、一括登録とエラーCSVを提供します。',flow:'file → parse → mapping/profile → client preview → normalized rows',sources:['src/taskcapture-web/src/WbsImport.tsx','src/taskcapture-web/src/api.ts','tests/fixtures/wbs-parent-key.csv','tests/fixtures/wbs-level.csv','tests/fixtures/wbs-hierarchy-columns.csv']},
+      wbs:{type:'React batch UI',name:'WBS Import UI',description:'XLSX/CSVをブラウザー内で解析し、見出し行・列の自動推測、説明付き修正、開始日、登録先選択、複数profile、編集preview、最終確認と一括登録を提供します。',flow:'file → parse/infer → mapping/profile/destination → client preview → normalized rows',sources:['src/taskcapture-web/src/WbsImport.tsx','src/taskcapture-web/src/AsanaDestinationPicker.tsx','src/taskcapture-web/src/api.ts','tests/fixtures/wbs-parent-key.csv','tests/fixtures/wbs-level.csv','tests/fixtures/wbs-hierarchy-columns.csv']},
       launcher:{type:'WinForms',name:'Windows Launcher',description:'trayに常駐し、Ctrl+Shift+Aまたはメニューから小型入力画面を開きます。',flow:'global hotkey / tray / clipboard → LauncherForm',sources:['src/TaskCapture.Launcher/LauncherApplicationContext.cs','src/TaskCapture.Launcher/Program.cs']},
       webview:{type:'WebView2',name:'Launcher Bridge',description:'同じReact画面をhostし、clipboardをJSON messageで渡し、登録完了messageで画面を隠します。',flow:'Windows clipboard ⇄ JSON web message ⇄ React SPA',sources:['src/TaskCapture.Launcher/LauncherForm.cs','src/taskcapture-web/src/App.tsx']},
       api:{type:'ASP.NET Core',name:'API Host',description:'DI、DB provider切替、CORS、Controller、Problem Details、production SPA配信を構成します。',flow:'HTTP / configuration → controllers and services → HTTP / static assets',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs']},
@@ -127,8 +127,8 @@
       wbsflow:{type:'Application Service',name:'WBS Import Workflow',description:'最大5,000行をserver dry-runし、親不足・循環・重複を検証します。親優先に登録し、row hashで重複を防ぎ、失敗行だけ再開します。',flow:'normalized rows → profile/batch/row → Asana/Mock → per-row save/retry',sources:['src/TaskCapture.Api/Services/WbsImportService.cs','src/TaskCapture.Api/Contracts/WbsImportDtos.cs','src/TaskCapture.Api/Controllers/WbsImportsController.cs']},
       organizer:{type:'Domain Service',name:'Task Organizer',description:'設定でRuleBasedまたはGeminiを選択し、親の基本項目とサブタスク候補を抽出します。ITaskOrganizer境界は将来のAzure OpenAIでも維持します。',flow:'raw text + Japan date → provider adapter → OrganizedTask with subtasks',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Services/TaskOrganizer.cs','src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs']},
       gemini:{type:'AI Adapter',name:'Gemini + fallback',description:'Google Gen AI .NET SDKとJSON Schemaで親候補と必要な0〜6件の実行可能なサブタスクを構造化します。キー未設定、timeout、API/応答エラーではRuleBasedへ自動フォールバックします。',flow:'raw text + server-side secret → Gemini API → validated OrganizedTask / RuleBased fallback',sources:['src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs']},
-      db:{type:'EF Core / SQL Server',name:'Persistence',description:'通常入力とWBSの親子・行別登録結果を含む11テーブル、index、relationship、4 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs','src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs','src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs','src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs']},
-      asana:{type:'External Adapter',name:'Asana / Mock',description:'自由文担当者をworkspaceユーザー名へ完全一致または一意な部分一致で解決し、親を作った後に同じ担当者GIDで子を登録します。0件・複数件では未割り当てと警告にします。',flow:'confirmed parent/subtasks → GET workspace users → POST tasks → POST tasks/{gid}/subtasks → actual assignee / warning / safe results',sources:['src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/ApiAsanaTaskServiceTests.cs']},
+      db:{type:'EF Core / SQL Server',name:'Persistence',description:'通常入力とWBSの開始日・期限、親子・行別登録結果を含む11テーブル、index、relationship、5 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs','src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs','src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs','src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs','src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs']},
+      asana:{type:'External Adapter',name:'Asana / Mock',description:'project/sectionを名前選択へ提供し、自由文担当者を安全に解決して開始日・期限付きの親子タスクを登録します。0件・複数件では未割り当てと警告にします。',flow:'GET project/sections → confirmed parent/subtasks → GET workspace users → POST tasks/subtasks with dates → safe results',sources:['src/TaskCapture.Api/Controllers/AsanaMetadataController.cs','src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/ApiAsanaTaskServiceTests.cs']},
       audit:{type:'Data Model',name:'History & Audit',description:'入力、親子候補、WBS profile/batch/row、登録試行、担当者解決status/GID/name/警告、イベントをUTCで保存します。',flow:'workflow events → 11 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Services/WbsImportService.cs']}
     };
     const description=document.getElementById('detail-description'),flow=document.getElementById('detail-flow'),sources=document.getElementById('detail-sources'),name=document.getElementById('detail-name'),type=document.getElementById('detail-type');

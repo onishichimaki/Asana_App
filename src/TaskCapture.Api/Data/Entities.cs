@@ -36,6 +36,7 @@ public sealed class TaskCandidate
     [MaxLength(200)] public string Title { get; set; } = string.Empty;
     [MaxLength(10_000)] public string Description { get; set; } = string.Empty;
     [MaxLength(200)] public string? Assignee { get; set; }
+    public DateOnly? StartDate { get; set; }
     public DateOnly? DueDate { get; set; }
     [MaxLength(64)] public string? ProjectGid { get; set; }
     [MaxLength(64)] public string? SectionGid { get; set; }
@@ -175,6 +176,7 @@ public sealed class WbsImportRow
     [MaxLength(200)] public string Title { get; set; } = string.Empty;
     [MaxLength(10_000)] public string Description { get; set; } = string.Empty;
     [MaxLength(200)] public string? Assignee { get; set; }
+    public DateOnly? StartDate { get; set; }
     public DateOnly? DueDate { get; set; }
     [MaxLength(32)] public string Status { get; set; } = "Ready";
     [MaxLength(2_000)] public string ValidationErrorsJson { get; set; } = "[]";

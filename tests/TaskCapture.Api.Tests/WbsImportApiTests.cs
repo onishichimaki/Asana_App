@@ -38,7 +38,8 @@ public sealed class WbsImportApiTests : IAsyncLifetime
                 [1] = "parentKey",
                 [2] = "title",
                 [3] = "assignee",
-                [4] = "dueDate"
+                [4] = "startDate",
+                [5] = "dueDate"
             }
         };
         var profileResponse = await _client.PostAsJsonAsync(
@@ -61,6 +62,8 @@ public sealed class WbsImportApiTests : IAsyncLifetime
         Assert.Equal("Ready", batch.Status);
         Assert.Equal(3, batch.ValidRows);
         Assert.Equal([0, 1, 1], batch.Rows.Select(row => row.Depth));
+        Assert.Equal(new DateOnly(2026, 8, 20), batch.Rows[2].StartDate);
+        Assert.Equal(new DateOnly(2026, 8, 31), batch.Rows[2].DueDate);
 
         var registerResponse = await _client.PostAsync(
             $"/api/wbs-imports/batches/{batch.Id}/register",
@@ -97,6 +100,12 @@ public sealed class WbsImportApiTests : IAsyncLifetime
         Assert.Equal(1, await db.WbsImportProfiles.CountAsync());
         Assert.Equal(2, await db.WbsImportBatches.CountAsync());
         Assert.Equal(6, await db.WbsImportRows.CountAsync());
+        Assert.All(
+            await db.WbsImportRows
+                .Where(row => row.Title == "設計")
+                .Select(row => row.StartDate)
+                .ToListAsync(),
+            startDate => Assert.Equal(new DateOnly(2026, 8, 20), startDate));
         Assert.True(await db.AuditLogs.CountAsync() >= 5);
     }
 
@@ -202,6 +211,33 @@ public sealed class WbsImportApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Preview_RejectsStartDateAfterDueDate()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/wbs-imports/batches",
+            new WbsImportBatchRequest
+            {
+                FileName = "invalid-date.csv",
+                FileHash = new string('1', 64),
+                SheetName = "WBS",
+                LayoutSignature = new string('2', 64),
+                Rows =
+                [
+                    new WbsNormalizedRowRequest
+                    {
+                        SourceRowNumber = 2,
+                        SourceKey = "1",
+                        Title = "日付が不正な作業",
+                        StartDate = new DateOnly(2026, 9, 2),
+                        DueDate = new DateOnly(2026, 9, 1)
+                    }
+                ]
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private async Task<WbsImportBatchResponse> CreateBatchAsync(Guid profileId, string fileHash)
     {
         var response = await _client.PostAsJsonAsync(
@@ -238,6 +274,7 @@ public sealed class WbsImportApiTests : IAsyncLifetime
                         SourceKey = "1.2",
                         ParentSourceKey = "1",
                         Title = "設計",
+                        StartDate = new DateOnly(2026, 8, 20),
                         DueDate = new DateOnly(2026, 8, 31),
                         SortOrder = 2
                     }

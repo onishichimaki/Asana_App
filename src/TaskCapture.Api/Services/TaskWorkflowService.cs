@@ -238,6 +238,7 @@ public sealed class TaskWorkflowService(
         candidate.Title = input.Title.Trim();
         candidate.Description = input.Description.Trim();
         candidate.Assignee = NullIfWhiteSpace(input.Assignee);
+        candidate.StartDate = input.StartDate;
         candidate.DueDate = input.DueDate;
         candidate.ProjectGid = NullIfWhiteSpace(input.ProjectGid);
         candidate.SectionGid = NullIfWhiteSpace(input.SectionGid);
@@ -337,6 +338,7 @@ public sealed class TaskWorkflowService(
         candidate.Title,
         candidate.Description,
         candidate.Assignee,
+        candidate.StartDate,
         candidate.DueDate,
         candidate.Subtasks.OrderBy(x => x.SortOrder).Select(x => x.Title).ToArray(),
         candidate.ProjectGid,
