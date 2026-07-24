@@ -29,13 +29,13 @@ flowchart LR
 
 | コンポーネント | 責務 |
 |---|---|
-| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補の編集、実際に解決された担当者と警告の表示 |
-| WBS UI | XLSX/CSVのブラウザー内解析、sheet・行・自由列マッピング、4階層方式、複数テンプレート、編集可能preview、一括登録・エラーCSV |
+| React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補、開始日・期限、登録先の編集、実際に解決された担当者と警告の表示 |
+| WBS UI | XLSX/CSVのブラウザー内解析、見出し行・列の自動推測と説明付き自由マッピング、4階層方式、開始日・対象列、複数テンプレート、project/section選択、編集可能preview、最終確認、一括登録・エラーCSV |
 | Task workflow | 状態遷移、親子候補のDB保存、監査、親→子の順序制御、部分失敗時の再開 |
 | WBS import workflow | server dry-run、行単位検証、親優先登録、row hash重複防止、部分失敗からの再開、profile/batch/row監査 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出と、明示された箇条書きのサブタスク化 |
 | Gemini organizer | GeminiのJSON Schema出力を親候補と0〜6件の実行可能なサブタスクへ変換し、未設定・失敗時はRuleBasedへフォールバック |
-| Asana services | Mock と REST API の設定切り替え、workspaceユーザー名の安全なGID解決、親タスク/サブタスク登録、候補/既定project/workspaceの登録先解決 |
+| Asana services | Mock と REST API の設定切り替え、workspaceユーザー名の安全なGID解決、project/section一覧取得、開始日を含む親タスク/サブタスク登録、候補/既定project/workspaceの登録先解決 |
 | EF Core | SQL Server スキーマ、履歴、登録・監査データ |
 | Launcher | tray、グローバルホットキー、WebView2、クリップボード橋渡し、自動クローズ |
 
@@ -48,6 +48,8 @@ flowchart LR
 | PUT | `/api/task-candidates/{id}` | 確認・修正した候補の保存 |
 | POST | `/api/task-candidates/{id}/register` | 親候補とサブタスクの保存、Asana/Mockへの親子登録 |
 | GET | `/api/task-requests/recent` | 限定的な直近履歴確認 |
+| GET | `/api/asana/projects` | workspaceの利用可能project一覧とサーバー既定値を取得 |
+| GET | `/api/asana/projects/{projectGid}/sections` | 選択projectのsection一覧を取得 |
 | GET/POST | `/api/wbs-imports/profiles` | WBS変換テンプレートの一覧・作成 |
 | PUT/DELETE | `/api/wbs-imports/profiles/{id}` | テンプレートの更新・削除 |
 | POST | `/api/wbs-imports/batches` | 正規化行のserver dry-runとbatch保存 |
@@ -73,7 +75,7 @@ erDiagram
 
     Users { guid Id PK string DisplayName string ClientKey }
     TaskRequests { guid Id PK guid UserId FK string RawText string Source string Status datetime CreatedAtUtc }
-    TaskCandidates { guid Id PK guid TaskRequestId FK string Title string Description string Assignee date DueDate string AdvancedSettingsJson }
+    TaskCandidates { guid Id PK guid TaskRequestId FK string Title string Description string Assignee date StartDate date DueDate string AdvancedSettingsJson }
     TaskCandidateSubtasks { guid Id PK guid TaskCandidateId FK string Title int SortOrder }
     AsanaRegistrations { guid Id PK guid TaskCandidateId FK bool Succeeded string ExternalTaskGid string ResolvedAssigneeGid string ResolvedAssigneeName string AssigneeResolutionStatus }
     AsanaSubtaskRegistrations { guid Id PK guid TaskCandidateSubtaskId FK bool Succeeded string ExternalTaskGid string ExternalTaskUrl string ErrorCode }
@@ -81,7 +83,7 @@ erDiagram
     AuditLogs { guid Id PK guid UserId string EventType string EntityType string EntityId string Detail }
     WbsImportProfiles { guid Id PK guid UserId FK string Name string LayoutSignature string MappingJson }
     WbsImportBatches { guid Id PK guid UserId FK guid WbsImportProfileId FK string FileHash string Status int TotalRows }
-    WbsImportRows { guid Id PK guid WbsImportBatchId FK guid ParentRowId FK string SourceKey string RowHash string Status string ExternalTaskGid }
+    WbsImportRows { guid Id PK guid WbsImportBatchId FK guid ParentRowId FK string SourceKey date StartDate date DueDate string RowHash string Status string ExternalTaskGid }
 ```
 
 テーブルには監査用の UTC 日時を持たせる。入力・候補・エラー詳細は秘密情報を含まない範囲で保持し、PAT や接続文字列は保持しない。
@@ -99,15 +101,16 @@ erDiagram
 ```mermaid
 flowchart LR
     File["XLSX / CSV"] --> Parse["ブラウザー内解析"]
-    Parse --> Mapping["sheet・header・列・階層を指定"]
-    Mapping --> Preview["親子プレビューと検証"]
+    Parse --> Mapping["見出し行・列を自動推測し、利用者が確認"]
+    Mapping --> Destination["project・sectionを名前で選択"]
+    Destination --> Preview["親子プレビューと検証"]
     Preview --> Batch["確認済み正規化行だけをBatch APIへ送信"]
     Batch --> Db2["WbsImportProfiles / Batches / Rows"]
     Batch --> Asana2["親優先・行単位のAsana登録"]
     Mapping --> Profile["複数の名前付きImportProfile"]
 ```
 
-階層は「なし」「識別キー・親キー」「階層レベル」「大項目・中項目等の階層列」から選ぶ。クライアントpreviewに加えてAPIが親不足・循環・重複等を再検証し、`WbsImportProfiles`、`WbsImportBatches`、`WbsImportRows` へ保存する。親優先でAsanaへ登録し、row hashで別batchを含む重複を防ぎ、部分失敗時は成功済み行を飛ばして未完了行だけを再試行する。
+階層は「なし」「識別キー・親キー」「階層レベル」「大項目・中項目等の階層列」から選ぶ。見出し名から開始日、期限、登録対象を含む列を初期推測し、割り当ての意味を画面内に表示する。利用者はproject/sectionを名前で選び、クライアントpreviewに加えてAPIが日付順、親不足・循環・重複等を再検証する。確認済み結果を `WbsImportProfiles`、`WbsImportBatches`、`WbsImportRows` へ保存し、親優先でAsanaへ登録する。row hashで別batchを含む重複を防ぎ、部分失敗時は成功済み行を飛ばして未完了行だけを再試行する。
 
 WBS batch状態は `Ready / Invalid → Registering → Registered / PartiallyRegistered / Failed`、行状態は `Ready / Invalid / Excluded → Registered / Duplicate / Failed / Blocked` である。
 

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { requestJson } from './api'
+import AsanaDestinationPicker from './AsanaDestinationPicker'
 import WbsImport from './WbsImport'
 import './App.css'
 
 type InputSource = 'text' | 'paste' | 'voice' | 'clipboard' | 'launcher' | 'image' | 'minutes'
-type TaskCandidate = { id: string; taskRequestId: string; title: string; description: string; assignee: string | null; dueDate: string | null; subtasks: string[]; projectGid: string | null; sectionGid: string | null; tags: string[]; customFields: Record<string, string>; priority: string | null }
+type TaskCandidate = { id: string; taskRequestId: string; title: string; description: string; assignee: string | null; startDate: string | null; dueDate: string | null; subtasks: string[]; projectGid: string | null; sectionGid: string | null; tags: string[]; customFields: Record<string, string>; priority: string | null }
 type CandidateDraft = TaskCandidate & { subtasksText: string; tagsText: string; customFieldsText: string }
 type OrganizeResponse = { taskRequestId: string; status: string; candidate: TaskCandidate }
 type SubtaskRegistrationResponse = { taskCandidateSubtaskId: string; title: string; succeeded: boolean; provider: string; externalTaskGid: string | null; externalTaskUrl: string | null; errorMessage: string | null }
@@ -48,7 +49,8 @@ function candidatePayload(candidate: CandidateDraft) {
   return {
     title: candidate.title.trim(), description: candidate.description.trim(), assignee: candidate.assignee?.trim() || null,
     subtasks: parseSubtasks(candidate.subtasksText),
-    dueDate: candidate.dueDate || null, projectGid: candidate.projectGid?.trim() || null, sectionGid: candidate.sectionGid?.trim() || null,
+    startDate: candidate.startDate || null, dueDate: candidate.dueDate || null,
+    projectGid: candidate.projectGid?.trim() || null, sectionGid: candidate.sectionGid?.trim() || null,
     tags: candidate.tagsText.split(',').map((tag) => tag.trim()).filter(Boolean), customFields, priority: candidate.priority || null,
   }
 }
@@ -277,6 +279,8 @@ function App() {
   const register = async () => {
     if (!candidate) return
     if (!candidate.title.trim()) { setMessage('タスクタイトルを入力してください。'); document.getElementById('candidate-title')?.focus(); return }
+    if (candidate.startDate && !candidate.dueDate) { setMessage('開始日を設定する場合は期限も指定してください。'); return }
+    if (candidate.startDate && candidate.dueDate && candidate.startDate > candidate.dueDate) { setMessage('開始日は期限以前の日付にしてください。'); return }
     setBusy('register'); setMessage(null)
     try {
       const result = await requestJson<RegistrationResponse>(`/api/task-candidates/${candidate.id}/register`, { method: 'POST', body: JSON.stringify(candidatePayload(candidate)) })
@@ -299,7 +303,7 @@ function App() {
   }
 
   return (
-    <main className={`app-shell ${isLauncher ? 'launcher-shell' : ''}`} onKeyDown={handleShortcut}>
+    <main className={`app-shell ${isLauncher ? 'launcher-shell' : ''} ${mode === 'wbs' && !isLauncher ? 'wbs-shell' : ''}`} onKeyDown={handleShortcut}>
       <header className="topbar">
         <h1>Asanaへタスク登録</h1>
         <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
@@ -356,8 +360,9 @@ function App() {
         <div className="section-heading"><h2 id="candidate-heading">登録内容を確認</h2><span className="ready-badge">編集可</span></div>
         <div className="field full-field"><label htmlFor="candidate-title">タスクタイトル <strong>必須</strong></label><input id="candidate-title" value={candidate.title} maxLength={200} onChange={(event) => setDraftField('title', event.target.value)} /></div>
         <div className="field full-field"><label htmlFor="candidate-description">タスク内容</label><textarea id="candidate-description" value={candidate.description} maxLength={maxInputLength} rows={isLauncher ? 3 : 4} onChange={(event) => setDraftField('description', event.target.value)} /></div>
-        <div className="field-grid">
+        <div className="field-grid schedule-grid">
           <div className="field"><label htmlFor="candidate-assignee">担当者</label><input id="candidate-assignee" value={candidate.assignee ?? ''} maxLength={200} placeholder="名前 / me / Asana GID" onChange={(event) => setDraftField('assignee', event.target.value)} /></div>
+          <div className="field"><label htmlFor="candidate-start">開始日</label><input id="candidate-start" type="date" value={candidate.startDate ?? ''} onChange={(event) => setDraftField('startDate', event.target.value || null)} /></div>
           <div className="field"><label htmlFor="candidate-due">期限</label><input id="candidate-due" type="date" value={candidate.dueDate ?? ''} onChange={(event) => setDraftField('dueDate', event.target.value || null)} /></div>
         </div>
         <div className="field full-field subtask-field">
@@ -365,8 +370,17 @@ function App() {
           <textarea id="candidate-subtasks" value={candidate.subtasksText} maxLength={2_000} rows={isLauncher ? 4 : 5} placeholder={'1行に1件ずつ入力\n例：冷蔵庫の食材を確認する'} onChange={(event) => setDraftField('subtasksText', event.target.value)} />
         </div>
         <details className="advanced"><summary>詳細設定</summary><div className="advanced-grid">
-          <div className="field"><label htmlFor="project-gid">プロジェクト GID</label><input id="project-gid" inputMode="numeric" value={candidate.projectGid ?? ''} onChange={(event) => setDraftField('projectGid', event.target.value)} /></div>
-          <div className="field"><label htmlFor="section-gid">セクション GID</label><input id="section-gid" inputMode="numeric" value={candidate.sectionGid ?? ''} onChange={(event) => setDraftField('sectionGid', event.target.value)} /></div>
+          <div className="full-field">
+            <AsanaDestinationPicker
+              idPrefix="capture"
+              projectGid={candidate.projectGid ?? ''}
+              sectionGid={candidate.sectionGid ?? ''}
+              onChange={(projectGid, sectionGid) => {
+                setCandidate(current => current ? { ...current, projectGid, sectionGid } : current)
+                setRegistration(null)
+              }}
+            />
+          </div>
           <div className="field"><label htmlFor="tags">タグ GID</label><input id="tags" value={candidate.tagsText} placeholder="123, 456" onChange={(event) => setDraftField('tagsText', event.target.value)} /></div>
           <div className="field"><label htmlFor="priority">優先度</label><select id="priority" value={candidate.priority ?? ''} onChange={(event) => setDraftField('priority', event.target.value || null)}><option value="">未設定</option><option value="low">低</option><option value="normal">通常</option><option value="high">高</option><option value="urgent">緊急</option></select></div>
           <div className="field full-field"><label htmlFor="custom-fields">カスタムフィールド</label><textarea id="custom-fields" rows={3} value={candidate.customFieldsText} placeholder={'{"フィールドGID":"値"}'} onChange={(event) => setDraftField('customFieldsText', event.target.value)} /></div>

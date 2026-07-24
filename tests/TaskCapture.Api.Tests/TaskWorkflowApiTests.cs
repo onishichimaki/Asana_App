@@ -50,6 +50,7 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
             Title = "発注書を最終確認する",
             Description = organized.Candidate.Description,
             Assignee = "me",
+            StartDate = new DateOnly(2026, 7, 27),
             DueDate = organized.Candidate.DueDate,
             Subtasks = organized.Candidate.Subtasks,
             ProjectGid = "123456789",
@@ -100,6 +101,9 @@ public sealed class TaskWorkflowApiTests : IAsyncLifetime
         Assert.Equal(2, await db.AuditLogs.CountAsync());
         Assert.Equal("Registered", await db.TaskRequests.Select(x => x.Status).SingleAsync());
         Assert.Equal("発注書を最終確認する", await db.TaskCandidates.Select(x => x.Title).SingleAsync());
+        Assert.Equal(
+            new DateOnly(2026, 7, 27),
+            await db.TaskCandidates.Select(x => x.StartDate).SingleAsync());
     }
 
     [Fact]

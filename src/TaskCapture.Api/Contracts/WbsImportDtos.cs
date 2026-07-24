@@ -18,7 +18,7 @@ public sealed class WbsMappingRequest : IValidatableObject
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         var allowedRoles = new HashSet<string>(
-            ["ignore", "title", "description", "assignee", "dueDate", "key", "parentKey", "level", "hierarchy"],
+            ["ignore", "title", "description", "assignee", "startDate", "dueDate", "include", "key", "parentKey", "level", "hierarchy"],
             StringComparer.Ordinal);
         if (Roles.Count > 500 || Roles.Any(pair => pair.Key is < 0 or > 499 || !allowedRoles.Contains(pair.Value)))
         {
@@ -94,6 +94,7 @@ public sealed class WbsNormalizedRowRequest
     [StringLength(200)] public string Title { get; init; } = string.Empty;
     [StringLength(10_000)] public string Description { get; init; } = string.Empty;
     [StringLength(200)] public string? Assignee { get; init; }
+    public DateOnly? StartDate { get; init; }
     public DateOnly? DueDate { get; init; }
     public IReadOnlyList<string> ValidationErrors { get; init; } = [];
 }
@@ -125,6 +126,21 @@ public sealed class WbsImportBatchRequest : IValidatableObject
         {
             yield return new ValidationResult("SectionGid requires ProjectGid.", [nameof(SectionGid), nameof(ProjectGid)]);
         }
+        foreach (var row in Rows.Where(row => row.Included))
+        {
+            if (row.StartDate is not null && row.DueDate is null)
+            {
+                yield return new ValidationResult(
+                    $"Rows[{row.SourceRowNumber}] requires DueDate when StartDate is specified.",
+                    [nameof(Rows)]);
+            }
+            if (row.StartDate > row.DueDate)
+            {
+                yield return new ValidationResult(
+                    $"Rows[{row.SourceRowNumber}] StartDate must be on or before DueDate.",
+                    [nameof(Rows)]);
+            }
+        }
     }
 }
 
@@ -139,6 +155,7 @@ public sealed record WbsImportRowResponse(
     string Title,
     string Description,
     string? Assignee,
+    DateOnly? StartDate,
     DateOnly? DueDate,
     string Status,
     IReadOnlyList<string> ValidationErrors,

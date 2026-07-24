@@ -16,6 +16,7 @@ public sealed class CandidateUpdateRequest : IValidatableObject
     [Required, StringLength(200, MinimumLength = 1)] public string Title { get; init; } = string.Empty;
     [StringLength(10_000)] public string Description { get; init; } = string.Empty;
     [StringLength(200)] public string? Assignee { get; init; }
+    public DateOnly? StartDate { get; init; }
     public DateOnly? DueDate { get; init; }
     public IReadOnlyList<string> Subtasks { get; init; } = [];
     [RegularExpression("^[0-9]{1,64}$")] public string? ProjectGid { get; init; }
@@ -29,6 +30,14 @@ public sealed class CandidateUpdateRequest : IValidatableObject
         if (SectionGid is not null && ProjectGid is null)
         {
             yield return new ValidationResult("SectionGid requires ProjectGid.", [nameof(SectionGid), nameof(ProjectGid)]);
+        }
+        if (StartDate is not null && DueDate is null)
+        {
+            yield return new ValidationResult("DueDate is required when StartDate is specified.", [nameof(StartDate), nameof(DueDate)]);
+        }
+        if (StartDate > DueDate)
+        {
+            yield return new ValidationResult("StartDate must be on or before DueDate.", [nameof(StartDate), nameof(DueDate)]);
         }
 
         if (Tags is null || Tags.Count > 20 || Tags.Any(tag => !System.Text.RegularExpressions.Regex.IsMatch(tag, "^[0-9]{1,64}$")))
@@ -56,6 +65,7 @@ public sealed record TaskCandidateResponse(
     string Title,
     string Description,
     string? Assignee,
+    DateOnly? StartDate,
     DateOnly? DueDate,
     IReadOnlyList<string> Subtasks,
     string? ProjectGid,

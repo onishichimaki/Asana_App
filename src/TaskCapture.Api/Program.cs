@@ -73,6 +73,13 @@ builder.Services.AddScoped<IAsanaTaskService>(services =>
         ? services.GetRequiredService<ApiAsanaTaskService>()
         : services.GetRequiredService<MockAsanaTaskService>();
 });
+builder.Services.AddScoped<IAsanaMetadataService>(services =>
+{
+    var options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsanaOptions>>().Value;
+    return options.Mode.Equals("Api", StringComparison.OrdinalIgnoreCase)
+        ? services.GetRequiredService<ApiAsanaTaskService>()
+        : services.GetRequiredService<MockAsanaTaskService>();
+});
 builder.Services.AddScoped<TaskWorkflowService>();
 builder.Services.AddScoped<WbsImportService>();
 

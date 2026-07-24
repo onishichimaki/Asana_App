@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import readXlsxFile from 'read-excel-file/browser'
+import AsanaDestinationPicker from './AsanaDestinationPicker'
 import { apiBase, getClientKey, requestJson } from './api'
 
 type Cell = string | number | boolean | Date | null
 type SheetData = { name: string; rows: Cell[][] }
 type HierarchyMode = 'none' | 'parentKey' | 'level' | 'columns'
-type ColumnRole = 'ignore' | 'title' | 'description' | 'assignee' | 'dueDate' | 'key' | 'parentKey' | 'level' | 'hierarchy'
+type ColumnRole = 'ignore' | 'title' | 'description' | 'assignee' | 'startDate' | 'dueDate' | 'include' | 'key' | 'parentKey' | 'level' | 'hierarchy'
 type Mapping = {
   hierarchyMode: HierarchyMode
   roles: Record<number, ColumnRole>
@@ -36,6 +37,7 @@ type DraftRow = {
   title: string
   description: string
   assignee: string | null
+  startDate: string | null
   dueDate: string | null
   validationErrors: string[]
 }
@@ -80,13 +82,28 @@ const roleOptions: Array<{ value: ColumnRole; label: string }> = [
   { value: 'title', label: 'タイトル' },
   { value: 'description', label: '説明' },
   { value: 'assignee', label: '担当者' },
+  { value: 'startDate', label: '開始日' },
   { value: 'dueDate', label: '期限' },
+  { value: 'include', label: '登録対象' },
   { value: 'key', label: '識別キー' },
   { value: 'parentKey', label: '親キー' },
   { value: 'level', label: '階層レベル' },
   { value: 'hierarchy', label: '階層列' },
 ]
-const singleRoles = new Set<ColumnRole>(['assignee', 'dueDate', 'key', 'parentKey', 'level'])
+const singleRoles = new Set<ColumnRole>(['assignee', 'startDate', 'dueDate', 'include', 'key', 'parentKey', 'level'])
+const roleHelp: Record<ColumnRole, string> = {
+  ignore: 'Asanaへ送らない参考列',
+  title: 'タスク名。複数列を結合可能',
+  description: 'タスクの説明。複数列を結合可能',
+  assignee: '担当者名・me・ユーザーGID',
+  startDate: '作業を開始する日',
+  dueDate: '完了期限',
+  include: 'はい/○/1は対象、いいえ/×/0は除外',
+  key: '行を一意に識別するWBS番号',
+  parentKey: '親タスクのWBS番号',
+  level: '0、1、2などの階層レベル',
+  hierarchy: '大項目・中項目・小項目の列',
+}
 
 function cellText(value: Cell | undefined) {
   if (value === null || value === undefined) return ''
@@ -171,7 +188,9 @@ function inferRoles(headers: string[]) {
     else if (/wbs(no|番号)|管理番号|タスクid|^id$/.test(normalized)) roles[index] = 'key'
     else if (/階層|レベル|level/.test(normalized)) roles[index] = 'level'
     else if (/担当|assignee|owner/.test(normalized)) roles[index] = 'assignee'
+    else if (/開始|着手|start/.test(normalized)) roles[index] = 'startDate'
     else if (/期限|完了予定|終了予定|due/.test(normalized)) roles[index] = 'dueDate'
+    else if (/asana対象|登録対象|取込対象|取り込み対象|include/.test(normalized)) roles[index] = 'include'
     else if (/備考|説明|内容|成果物|description|notes/.test(normalized)) roles[index] = 'description'
     else if (/作業名|タスク名|件名|タイトル|task|title/.test(normalized)) roles[index] = 'title'
     else roles[index] = 'ignore'
@@ -183,7 +202,28 @@ function inferRoles(headers: string[]) {
   return { ...emptyMapping, hierarchyMode, roles }
 }
 
-function parseDateValue(value: string, format: Mapping['dateFormat']) {
+function detectHeaderRow(rows: Cell[][]) {
+  let best = { row: 1, score: -1 }
+  rows.slice(0, 20).forEach((row, index) => {
+    const headers = row.map(cellText)
+    const inferred = inferRoles(headers)
+    const values = Object.values(inferred.roles)
+    const recognized = values.filter(role => role !== 'ignore')
+    const nonEmpty = headers.filter(Boolean).length
+    let score = recognized.length * 5 + Math.min(nonEmpty, 10)
+    if (values.includes('title')) score += 12
+    if (values.includes('key') && values.includes('parentKey')) score += 10
+    if (values.includes('assignee')) score += 3
+    if (values.includes('dueDate')) score += 3
+    if (values.includes('startDate')) score += 2
+    if (values.includes('include')) score += 2
+    if (nonEmpty < 2) score -= 12
+    if (score > best.score) best = { row: index + 1, score }
+  })
+  return best.score >= 10 ? best.row : 1
+}
+
+function parseDateValue(value: string, format: Mapping['dateFormat'], label: string) {
   const normalized = value.trim().replace(/[年月]/g, '/').replace(/日/g, '').replace(/[.]/g, '/')
   if (!normalized) return { value: null, error: null }
   let year: number
@@ -206,7 +246,15 @@ function parseDateValue(value: string, format: Mapping['dateFormat']) {
     date.getUTCDate() === day!
   return valid
     ? { value: `${year!.toString().padStart(4, '0')}-${month!.toString().padStart(2, '0')}-${day!.toString().padStart(2, '0')}`, error: null }
-    : { value: null, error: `期限「${value}」を日付に変換できません。` }
+    : { value: null, error: `${label}「${value}」を日付に変換できません。` }
+}
+
+function parseIncludedValue(value: string) {
+  const normalized = value.normalize('NFKC').trim().toLowerCase()
+  if (!normalized) return { value: false, error: null }
+  if (/^(はい|yes|true|1|○|〇|対象|登録)$/.test(normalized)) return { value: true, error: null }
+  if (/^(いいえ|no|false|0|×|x|対象外|除外)$/.test(normalized)) return { value: false, error: null }
+  return { value: true, error: `登録対象「${value}」は、はい/いいえ・○/×・1/0のいずれかにしてください。` }
 }
 
 function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): DraftRow[] {
@@ -218,7 +266,9 @@ function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): 
   const titleColumns = roleIndexes('title')
   const descriptionColumns = roleIndexes('description')
   const assigneeColumn = roleIndexes('assignee')[0]
+  const startDateColumn = roleIndexes('startDate')[0]
   const dueDateColumn = roleIndexes('dueDate')[0]
+  const includeColumn = roleIndexes('include')[0]
   const keyColumn = roleIndexes('key')[0]
   const parentColumn = roleIndexes('parentKey')[0]
   const levelColumn = roleIndexes('level')[0]
@@ -233,9 +283,19 @@ function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): 
     const title = titleColumns.map(index => cellText(row[index])).filter(Boolean).join(mapping.titleSeparator).trim()
     const description = descriptionColumns.map(index => cellText(row[index])).filter(Boolean).join(mapping.descriptionSeparator).trim()
     const assignee = assigneeColumn === undefined ? null : cellText(row[assigneeColumn]) || null
+    const rawStartDate = startDateColumn === undefined ? '' : cellText(row[startDateColumn])
     const rawDueDate = dueDateColumn === undefined ? '' : cellText(row[dueDateColumn])
-    const dueDate = parseDateValue(rawDueDate, mapping.dateFormat)
-    return { title, description, assignee, dueDate, sourceRowNumber }
+    const startDate = parseDateValue(rawStartDate, mapping.dateFormat, '開始日')
+    const dueDate = parseDateValue(rawDueDate, mapping.dateFormat, '期限')
+    const included = includeColumn === undefined
+      ? { value: true, error: null }
+      : parseIncludedValue(cellText(row[includeColumn]))
+    const errors = [startDate.error, dueDate.error, included.error].filter((error): error is string => Boolean(error))
+    if (startDate.value && !dueDate.value) errors.push('開始日を設定する場合は期限も必要です。')
+    if (startDate.value && dueDate.value && startDate.value > dueDate.value) {
+      errors.push('開始日は期限以前の日付にしてください。')
+    }
+    return { title, description, assignee, startDate, dueDate, included, errors, sourceRowNumber }
   }
 
   sourceRows.forEach((row, offset) => {
@@ -261,10 +321,11 @@ function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): 
             parentSourceKey: parentSourceKey?.slice(0, 256) ?? null,
             depth: level,
             sortOrder: result.length,
-            included: true,
+            included: fields.included.value,
             title: value,
             description: '',
             assignee: null,
+            startDate: null,
             dueDate: null,
             validationErrors: level > 0 && !parentSourceKey ? ['上位の階層列が空です。'] : [],
           }
@@ -277,9 +338,14 @@ function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): 
       if (deepest) {
         deepest.description ||= fields.description
         deepest.assignee ||= fields.assignee
+        deepest.startDate ||= fields.startDate.value
         deepest.dueDate ||= fields.dueDate.value
-        if (fields.dueDate.error && !deepest.validationErrors.includes(fields.dueDate.error)) {
-          deepest.validationErrors.push(fields.dueDate.error)
+        deepest.included = deepest.included && fields.included.value
+        fields.errors.forEach(error => {
+          if (!deepest.validationErrors.includes(error)) deepest.validationErrors.push(error)
+        })
+        if (fields.startDate.error && !deepest.validationErrors.includes(fields.startDate.error)) {
+          deepest.validationErrors.push(fields.startDate.error)
         }
       }
       return
@@ -289,7 +355,7 @@ function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): 
     const sourceKey = explicitKey || `row-${sourceRowNumber}`
     let parentSourceKey: string | null = null
     let depth = 0
-    const validationErrors = fields.dueDate.error ? [fields.dueDate.error] : []
+    const validationErrors = [...fields.errors]
 
     if (mapping.hierarchyMode === 'parentKey') {
       parentSourceKey = parentColumn === undefined ? null : cellText(row[parentColumn]) || null
@@ -314,10 +380,11 @@ function normalizeRows(rows: Cell[][], dataStartRow: number, mapping: Mapping): 
       parentSourceKey,
       depth,
       sortOrder: result.length,
-      included: true,
+      included: fields.included.value,
       title: fields.title,
       description: fields.description,
       assignee: fields.assignee,
+      startDate: fields.startDate.value,
       dueDate: fields.dueDate.value,
       validationErrors,
     })
@@ -393,6 +460,12 @@ export default function WbsImport() {
   const [batch, setBatch] = useState<Batch | null>(null)
   const [busy, setBusy] = useState<'file' | 'profile' | 'preview' | 'register' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [detectionMessage, setDetectionMessage] = useState<string | null>(null)
+  const [confirmingRegistration, setConfirmingRegistration] = useState(false)
+  const [destinationLabel, setDestinationLabel] = useState<{
+    projectName: string | null
+    sectionName: string | null
+  }>({ projectName: null, sectionName: null })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const selectedSheet = sheets.find(sheet => sheet.name === sheetName)
@@ -423,7 +496,10 @@ export default function WbsImport() {
           applyProfile(exact)
         } else {
           setSelectedProfileId('')
-          setMapping(inferRoles(headers))
+          const inferred = inferRoles(headers)
+          setMapping(inferred)
+          const count = Object.values(inferred.roles).filter(role => role !== 'ignore').length
+          setDetectionMessage(`見出し${headerRow}行目を判定し、${count}項目をおすすめ設定しました。`)
           setPreviewRows(null)
           setBatch(null)
         }
@@ -437,6 +513,32 @@ export default function WbsImport() {
     setPreviewRows(null)
     setBatch(null)
     setMessage(null)
+    setConfirmingRegistration(false)
+  }
+
+  const applyRecommended = (sheet: SheetData) => {
+    const detectedHeaderRow = detectHeaderRow(sheet.rows)
+    const nextDataStartRow = Math.min(detectedHeaderRow + 1, sheet.rows.length + 1)
+    const headerCells = sheet.rows[detectedHeaderRow - 1] ?? []
+    const sampleRows = sheet.rows.slice(detectedHeaderRow, detectedHeaderRow + 20)
+    const columnCount = Math.max(headerCells.length, ...sampleRows.map(row => row.length), 0)
+    const detectedHeaders = Array.from(
+      { length: columnCount },
+      (_, index) => cellText(headerCells[index]) || `見出しなし ${columnLetter(index)}`)
+    const inferred = inferRoles(detectedHeaders)
+    const count = Object.values(inferred.roles).filter(role => role !== 'ignore').length
+    setHeaderRow(detectedHeaderRow)
+    setDataStartRow(nextDataStartRow)
+    setMapping(inferred)
+    setSelectedProfileId('')
+    setDetectionMessage(`見出し${detectedHeaderRow}行目を判定し、${count}項目をおすすめ設定しました。`)
+    resetAfterMapping()
+  }
+
+  const selectSheet = (nextSheetName: string) => {
+    setSheetName(nextSheetName)
+    const nextSheet = sheets.find(sheet => sheet.name === nextSheetName)
+    if (nextSheet) applyRecommended(nextSheet)
   }
 
   const applyProfile = (profile: Profile) => {
@@ -448,6 +550,7 @@ export default function WbsImport() {
     setMapping(profile.mapping)
     setProjectGid(profile.projectGid ?? '')
     setSectionGid(profile.sectionGid ?? '')
+    setDetectionMessage(`保存済みテンプレート「${profile.name}」を自動適用しました。`)
     setPreviewRows(null)
     setBatch(null)
   }
@@ -489,12 +592,15 @@ export default function WbsImport() {
       setFileHash(nextHash)
       setSheets(parsedSheets)
       setSheetName(parsedSheets[0].name)
-      setHeaderRow(1)
-      setDataStartRow(2)
+      const detectedHeaderRow = detectHeaderRow(parsedSheets[0].rows)
+      setHeaderRow(detectedHeaderRow)
+      setDataStartRow(Math.min(detectedHeaderRow + 1, parsedSheets[0].rows.length + 1))
+      setMapping(inferRoles((parsedSheets[0].rows[detectedHeaderRow - 1] ?? []).map(cellText)))
       setSelectedProfileId('')
       setProfileName('')
       setPreviewRows(null)
       setBatch(null)
+      setConfirmingRegistration(false)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'WBSファイルを読み込めませんでした。')
     } finally {
@@ -579,6 +685,25 @@ export default function WbsImport() {
     setBatch(null)
   }
 
+  const updatePreviewDate = (index: number, field: 'startDate' | 'dueDate', value: string | null) => {
+    setPreviewRows(current => current?.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const startDate = field === 'startDate' ? value : row.startDate
+      const dueDate = field === 'dueDate' ? value : row.dueDate
+      const validationErrors = row.validationErrors.filter(error =>
+        !error.startsWith('開始日「') &&
+        !error.startsWith('期限「') &&
+        error !== '開始日を設定する場合は期限も必要です。' &&
+        error !== '開始日は期限以前の日付にしてください。')
+      if (startDate && !dueDate) validationErrors.push('開始日を設定する場合は期限も必要です。')
+      if (startDate && dueDate && startDate > dueDate) {
+        validationErrors.push('開始日は期限以前の日付にしてください。')
+      }
+      return { ...row, startDate, dueDate, validationErrors }
+    }) ?? null)
+    setBatch(null)
+  }
+
   const createServerPreview = async () => {
     if (!file || !previewRows) return
     const unresolved = previewRows.some(row => row.included && row.validationErrors.length > 0)
@@ -613,6 +738,7 @@ export default function WbsImport() {
 
   const registerBatch = async () => {
     if (!batch) return
+    setConfirmingRegistration(false)
     setBusy('register')
     setMessage(null)
     try {
@@ -655,6 +781,9 @@ export default function WbsImport() {
     if (mapping.hierarchyMode === 'columns' && !roles.includes('hierarchy')) errors.push('階層列を1つ以上指定してください。')
     return errors
   }, [mapping])
+  const mappedFields = useMemo(() => roleOptions
+    .filter(option => option.value !== 'ignore' && Object.values(mapping.roles).includes(option.value))
+    .map(option => option.label), [mapping.roles])
 
   const visibleRows: Array<DraftRow | BatchRow> = batch ? batch.rows : previewRows ?? []
   const includedCount = visibleRows.filter(row => row.included).length
@@ -675,8 +804,9 @@ export default function WbsImport() {
 
       {selectedSheet && <section className="panel wbs-mapping-panel">
         <div className="section-heading"><h2>2. レイアウトと列を指定</h2><span className="source-badge">{headers.length}列</span></div>
+        <p className="wbs-help">元の列を、登録したいAsana項目へ結び付けます。まず自動設定を確認し、違う箇所だけ選び直してください。</p>
         <div className="wbs-layout-grid">
-          <label>シート<select value={sheetName} onChange={event => { setSheetName(event.target.value); resetAfterMapping() }}>{sheets.map(sheet => <option key={sheet.name}>{sheet.name}</option>)}</select></label>
+          <label>シート<select value={sheetName} onChange={event => selectSheet(event.target.value)}>{sheets.map(sheet => <option key={sheet.name}>{sheet.name}</option>)}</select></label>
           <label>見出し行<input type="number" min={1} max={selectedSheet.rows.length} value={headerRow} onChange={event => { const value = Number(event.target.value); setHeaderRow(value); setDataStartRow(Math.max(value + 1, dataStartRow)); resetAfterMapping() }} /></label>
           <label>データ開始行<input type="number" min={headerRow + 1} max={selectedSheet.rows.length + 1} value={dataStartRow} onChange={event => { setDataStartRow(Number(event.target.value)); resetAfterMapping() }} /></label>
           <label>階層方式<select value={mapping.hierarchyMode} onChange={event => { setMapping(current => ({ ...current, hierarchyMode: event.target.value as HierarchyMode })); resetAfterMapping() }}>
@@ -685,6 +815,14 @@ export default function WbsImport() {
             <option value="level">階層レベル</option>
             <option value="columns">大項目・中項目などの階層列</option>
           </select></label>
+        </div>
+
+        <div className="wbs-auto-map">
+          <div>
+            <strong>{detectionMessage ?? '列名からおすすめ設定を作れます。'}</strong>
+            <span>{mappedFields.length > 0 ? `現在の割り当て: ${mappedFields.join('・')}` : 'タイトルなどの登録項目を選んでください。'}</span>
+          </div>
+          <button type="button" onClick={() => applyRecommended(selectedSheet)} disabled={busy !== null}>見出しと列を自動設定</button>
         </div>
 
         <div className="wbs-template-row">
@@ -704,21 +842,43 @@ export default function WbsImport() {
 
         <div className="wbs-column-map" role="table" aria-label="列マッピング">
           <div className="wbs-map-head" role="row"><span>元の列</span><span>サンプル</span><span>Asana項目</span></div>
-          {headers.map((header, index) => <div className="wbs-map-row" role="row" key={`${index}-${header}`}>
+          {headers.map((header, index) => {
+            const assignedRole = mapping.roles[index] ?? 'ignore'
+            return <div className={`wbs-map-row ${assignedRole !== 'ignore' ? 'mapped' : ''}`} role="row" key={`${index}-${header}`}>
             <strong>{columnLetter(index)}: {header}</strong>
             <span title={cellText(selectedSheet.rows[dataStartRow - 1]?.[index])}>{cellText(selectedSheet.rows[dataStartRow - 1]?.[index]) || '—'}</span>
-            <select aria-label={`${header}の割り当て`} value={mapping.roles[index] ?? 'ignore'} onChange={event => updateRole(index, event.target.value as ColumnRole)}>
-              {roleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </div>)}
+            <div className="wbs-role-cell">
+              <select aria-label={`${header}の割り当て`} value={assignedRole} onChange={event => updateRole(index, event.target.value as ColumnRole)}>
+                {roleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <small>{roleHelp[assignedRole]}</small>
+            </div>
+          </div>})}
         </div>
 
-        <details className="advanced wbs-advanced"><summary>変換と登録先</summary><div className="advanced-grid">
+        <div className="wbs-destination-card">
+          <div>
+            <strong>登録先</strong>
+            <span>プロジェクトとセクションを名前で選べます。この設定はテンプレートにも保存されます。</span>
+          </div>
+          <AsanaDestinationPicker
+            idPrefix="wbs"
+            projectGid={projectGid}
+            sectionGid={sectionGid}
+            disabled={busy !== null}
+            onResolvedLabel={setDestinationLabel}
+            onChange={(nextProjectGid, nextSectionGid) => {
+              setProjectGid(nextProjectGid)
+              setSectionGid(nextSectionGid)
+              resetAfterMapping()
+            }}
+          />
+        </div>
+
+        <details className="advanced wbs-advanced"><summary>文字・日付の変換設定</summary><div className="advanced-grid">
           <div className="field"><label>タイトル結合文字</label><input maxLength={20} value={mapping.titleSeparator} onChange={event => { setMapping(current => ({ ...current, titleSeparator: event.target.value })); resetAfterMapping() }} /></div>
           <div className="field"><label>説明結合文字</label><select value={mapping.descriptionSeparator} onChange={event => { setMapping(current => ({ ...current, descriptionSeparator: event.target.value })); resetAfterMapping() }}><option value={'\n'}>改行</option><option value=" ">空白</option><option value=" / "> / </option></select></div>
           <div className="field"><label>日付形式</label><select value={mapping.dateFormat} onChange={event => { setMapping(current => ({ ...current, dateFormat: event.target.value as Mapping['dateFormat'] })); resetAfterMapping() }}><option value="auto">自動</option><option value="yyyy-MM-dd">yyyy-MM-dd</option><option value="yyyy/MM/dd">yyyy/MM/dd</option><option value="yyyy.MM.dd">yyyy.MM.dd</option><option value="MM/dd/yyyy">MM/dd/yyyy</option></select></div>
-          <div className="field"><label>AsanaプロジェクトGID</label><input inputMode="numeric" value={projectGid} onChange={event => { setProjectGid(event.target.value); resetAfterMapping() }} /></div>
-          <div className="field"><label>AsanaセクションGID</label><input inputMode="numeric" value={sectionGid} onChange={event => { setSectionGid(event.target.value); resetAfterMapping() }} /></div>
         </div></details>
 
         {mappingErrors.length > 0 && <div className="wbs-inline-errors">{mappingErrors.map(error => <span key={error}>! {error}</span>)}</div>}
@@ -727,10 +887,10 @@ export default function WbsImport() {
 
       {previewRows && <section className="panel wbs-preview-panel">
         <div className="section-heading"><h2>3. 登録前プレビュー</h2><span className="ready-badge">{includedCount}件</span></div>
-        <p className="wbs-help">親子構造、タイトル、担当者、期限を確認してください。エラー行は修正するか、登録対象から外せます。</p>
+        <p className="wbs-help">親子構造、タイトル、担当者、開始日、期限を確認してください。エラー行は修正するか、登録対象から外せます。</p>
         <div className="wbs-summary"><span>全{visibleRows.length}件</span><span>登録対象{includedCount}件</span><span className={errorCount ? 'has-error' : ''}>エラー{errorCount}件</span></div>
         <div className="wbs-preview-table">
-          <div className="wbs-preview-head"><span>対象</span><span>タスク</span><span>担当者</span><span>期限</span><span>状態</span></div>
+          <div className="wbs-preview-head"><span>対象</span><span>タスク</span><span>担当者</span><span>開始日</span><span>期限</span><span>状態</span></div>
           {visibleRows.slice(0, 200).map((row, index) => <div className={`wbs-preview-row ${row.included ? '' : 'excluded'}`} key={`${row.sourceKey}-${index}`}>
             <input type="checkbox" aria-label={`${row.title || row.sourceKey}を登録対象にする`} checked={row.included} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { included: event.target.checked })} />
             <div className="wbs-task-cell" style={{ paddingLeft: `${Math.min(row.depth, 8) * 16}px` }}>
@@ -738,7 +898,8 @@ export default function WbsImport() {
               <small>行{row.sourceRowNumber}・{row.sourceKey}</small>
             </div>
             <input value={row.assignee ?? ''} maxLength={200} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { assignee: event.target.value || null })} />
-            <input type="date" value={row.dueDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { dueDate: event.target.value || null, validationErrors: row.validationErrors.filter(error => !error.startsWith('期限「')) })} />
+            <input aria-label={`${row.title || row.sourceKey}の開始日`} type="date" value={row.startDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewDate(index, 'startDate', event.target.value || null)} />
+            <input aria-label={`${row.title || row.sourceKey}の期限`} type="date" value={row.dueDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewDate(index, 'dueDate', event.target.value || null)} />
             <div className="wbs-row-status">
               {isBatchRow(row) ? <span className={`status-pill ${row.status.toLowerCase()}`}>{statusLabel(row.status)}</span> : <span className={`status-pill ${row.validationErrors.length ? 'invalid' : 'ready'}`}>{row.validationErrors.length ? '要修正' : '登録可能'}</span>}
               {row.validationErrors.map(error => <small className="row-error" key={error}>{error}</small>)}
@@ -753,11 +914,32 @@ export default function WbsImport() {
 
         {!batch && <button type="button" className="primary-button" onClick={() => void createServerPreview()} disabled={busy !== null || includedCount === 0 || errorCount > 0}>{busy === 'preview' ? '検証しています…' : 'この内容を確定する'}</button>}
         {batch && <div className="wbs-register-actions">
-          <button type="button" className="asana-button" onClick={() => void registerBatch()} disabled={busy !== null || batch.status === 'Registered'}>{busy === 'register' ? 'Asanaへ登録しています…' : batch.status === 'Registered' ? '登録完了' : 'Asanaへ一括登録'}</button>
+          <button type="button" className="asana-button" onClick={() => setConfirmingRegistration(true)} disabled={busy !== null || batch.status === 'Registered'}>{busy === 'register' ? 'Asanaへ登録しています…' : batch.status === 'Registered' ? '登録完了' : 'Asanaへ一括登録'}</button>
           {batch.failedRows > 0 && <button type="button" className="secondary-button" onClick={() => void downloadErrors()}>エラーCSV</button>}
           {batch.status === 'PartiallyRegistered' && <button type="button" className="secondary-button" onClick={() => void registerBatch()} disabled={busy !== null}>失敗行を再試行</button>}
         </div>}
       </section>}
+
+      {confirmingRegistration && batch && <div className="wbs-confirm-overlay" role="presentation" onKeyDown={event => {
+        if (event.key === 'Escape') setConfirmingRegistration(false)
+      }} onMouseDown={event => {
+        if (event.currentTarget === event.target) setConfirmingRegistration(false)
+      }}>
+        <div className="wbs-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="wbs-confirm-title">
+          <span className="wbs-confirm-icon" aria-hidden="true">A</span>
+          <h2 id="wbs-confirm-title">{includedCount}件をAsanaへ登録しますか？</h2>
+          <p>親タスクから順に登録します。登録後の取り消しはAsana側で行います。</p>
+          <dl>
+            <div><dt>プロジェクト</dt><dd>{destinationLabel.projectName ?? (projectGid ? `選択済み（${projectGid}）` : 'サーバーの既定プロジェクト')}</dd></div>
+            <div><dt>セクション</dt><dd>{destinationLabel.sectionName ?? (sectionGid ? `選択済み（${sectionGid}）` : '指定なし')}</dd></div>
+            <div><dt>エラー</dt><dd>{errorCount}件</dd></div>
+          </dl>
+          <div className="wbs-confirm-actions">
+            <button type="button" className="secondary-button" autoFocus onClick={() => setConfirmingRegistration(false)}>戻って確認</button>
+            <button type="button" className="asana-button" onClick={() => void registerBatch()}>登録する</button>
+          </div>
+        </div>
+      </div>}
 
       {message && <div className={message.includes('登録しました') || message.includes('保存しました') ? 'wbs-message success' : 'error-message'} role="status">{message}</div>}
     </div>

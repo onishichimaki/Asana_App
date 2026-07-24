@@ -202,7 +202,8 @@ public sealed class WbsImportService(
             var identity = inputRow.IsGeneratedKey
                 ? $"{user.Id:N}|{batch.ProjectGid}|{profileScope}|{batch.FileHash}|{batch.SheetName}|{inputRow.SourceRowNumber}"
                 : $"{user.Id:N}|{batch.ProjectGid}|{profileScope}|{key}";
-            var content = $"{title}\n{description}\n{assignee}\n{inputRow.DueDate:yyyy-MM-dd}";
+            var content =
+                $"{title}\n{description}\n{assignee}\n{inputRow.StartDate:yyyy-MM-dd}\n{inputRow.DueDate:yyyy-MM-dd}";
             var entity = new WbsImportRow
             {
                 WbsImportBatchId = batch.Id,
@@ -217,6 +218,7 @@ public sealed class WbsImportService(
                 Title = title,
                 Description = description,
                 Assignee = assignee,
+                StartDate = inputRow.StartDate,
                 DueDate = inputRow.DueDate,
                 Status = !inputRow.Included ? "Excluded" : rowErrors.Length > 0 ? "Invalid" : "Ready",
                 ValidationErrorsJson = JsonSerializer.Serialize(rowErrors, JsonOptions),
@@ -339,6 +341,7 @@ public sealed class WbsImportService(
                     row.Title,
                     row.Description,
                     row.Assignee,
+                    row.StartDate,
                     row.DueDate,
                     batch.ProjectGid,
                     batch.SectionGid),
@@ -506,6 +509,7 @@ public sealed class WbsImportService(
             row.Title,
             row.Description,
             row.Assignee,
+            row.StartDate,
             row.DueDate,
             row.Status,
             DeserializeErrors(row.ValidationErrorsJson),

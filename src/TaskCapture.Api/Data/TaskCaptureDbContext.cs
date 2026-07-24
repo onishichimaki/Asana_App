@@ -37,6 +37,7 @@ public sealed class TaskCaptureDbContext(DbContextOptions<TaskCaptureDbContext> 
         {
             entity.HasIndex(x => x.TaskRequestId);
             entity.HasOne(x => x.TaskRequest).WithMany(x => x.Candidates).HasForeignKey(x => x.TaskRequestId);
+            entity.Property(x => x.StartDate).HasColumnType("date");
             entity.Property(x => x.DueDate).HasColumnType("date");
             entity.Property(x => x.CreatedAtUtc).HasPrecision(0);
             entity.Property(x => x.UpdatedAtUtc).HasPrecision(0);
@@ -109,6 +110,7 @@ public sealed class TaskCaptureDbContext(DbContextOptions<TaskCaptureDbContext> 
                 .HasForeignKey(x => x.WbsImportBatchId);
             entity.HasOne(x => x.ParentRow).WithMany(x => x.Children)
                 .HasForeignKey(x => x.ParentRowId).OnDelete(DeleteBehavior.NoAction);
+            entity.Property(x => x.StartDate).HasColumnType("date");
             entity.Property(x => x.DueDate).HasColumnType("date");
             entity.Property(x => x.CreatedAtUtc).HasPrecision(0);
             entity.Property(x => x.UpdatedAtUtc).HasPrecision(0);

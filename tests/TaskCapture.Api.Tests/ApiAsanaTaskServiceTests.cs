@@ -69,6 +69,7 @@ public sealed class ApiAsanaTaskServiceTests
             Title = "カレーを作る",
             Description = "カレーを作る。",
             Assignee = "me",
+            StartDate = new DateOnly(2026, 7, 18),
             DueDate = new DateOnly(2026, 7, 21),
             TagsJson = "[]",
             CustomFieldsJson = "{}"
@@ -88,6 +89,7 @@ public sealed class ApiAsanaTaskServiceTests
         var data = document.RootElement.GetProperty("data");
         Assert.Equal("冷蔵庫の食材を確認する", data.GetProperty("name").GetString());
         Assert.Equal("444555666", data.GetProperty("assignee").GetString());
+        Assert.Equal("2026-07-18", data.GetProperty("start_on").GetString());
         Assert.Equal("2026-07-21", data.GetProperty("due_on").GetString());
     }
 
@@ -262,6 +264,7 @@ public sealed class ApiAsanaTaskServiceTests
                 "WBS子タスク",
                 "WBSから変換した説明",
                 "大西",
+                new DateOnly(2026, 8, 25),
                 new DateOnly(2026, 9, 1),
                 "1216674009964669",
                 null),
@@ -275,8 +278,57 @@ public sealed class ApiAsanaTaskServiceTests
         var data = requestDocument.RootElement.GetProperty("data");
         Assert.Equal("WBS子タスク", data.GetProperty("name").GetString());
         Assert.Equal("WBSから変換した説明", data.GetProperty("notes").GetString());
+        Assert.Equal("2026-08-25", data.GetProperty("start_on").GetString());
         Assert.Equal("2026-09-01", data.GetProperty("due_on").GetString());
         Assert.Equal("444555666", data.GetProperty("assignee").GetString());
+    }
+
+    [Fact]
+    public async Task GetProjectsAsync_ReturnsAllPagesSortedWithDefault()
+    {
+        var handler = new SequenceHandler(
+            (HttpStatusCode.OK,
+                """{"data":[{"gid":"222","name":"Bプロジェクト"}],"next_page":{"offset":"second-page"}}"""),
+            (HttpStatusCode.OK,
+                """{"data":[{"gid":"111","name":"Aプロジェクト"}],"next_page":null}"""));
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com/api/1.0/") };
+        var options = Microsoft.Extensions.Options.Options.Create(new AsanaOptions
+        {
+            Mode = "Api",
+            PersonalAccessToken = "test-secret",
+            DefaultWorkspaceGid = "1216675064179067",
+            DefaultProjectGid = "111"
+        });
+        var service = new ApiAsanaTaskService(client, options);
+
+        var result = await service.GetProjectsAsync(CancellationToken.None);
+
+        Assert.Equal("111", result.DefaultProjectGid);
+        Assert.Collection(
+            result.Projects,
+            project => Assert.Equal(("111", "Aプロジェクト"), (project.Gid, project.Name)),
+            project => Assert.Equal(("222", "Bプロジェクト"), (project.Gid, project.Name)));
+        Assert.Contains("offset=second-page", handler.Requests[1].Uri);
+    }
+
+    [Fact]
+    public async Task GetSectionsAsync_ReturnsProjectSections()
+    {
+        var handler = new SequenceHandler(
+            (HttpStatusCode.OK,
+                """{"data":[{"gid":"333","name":"未着手"},{"gid":"444","name":"進行中"}],"next_page":null}"""));
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com/api/1.0/") };
+        var options = Microsoft.Extensions.Options.Options.Create(new AsanaOptions
+        {
+            Mode = "Api",
+            PersonalAccessToken = "test-secret"
+        });
+        var service = new ApiAsanaTaskService(client, options);
+
+        var result = await service.GetSectionsAsync("1216674009964669", CancellationToken.None);
+
+        Assert.Equal(2, result.Count);
+        Assert.Contains("/projects/1216674009964669/sections?", handler.Requests[0].Uri);
     }
 
     private sealed record RecordedRequest(HttpMethod Method, string Uri, string? Body);

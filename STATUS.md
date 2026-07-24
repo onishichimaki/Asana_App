@@ -25,11 +25,15 @@
 - 親・成功済みサブタスクの二重登録防止と、`PartiallyRegistered` から失敗した子だけを再試行する処理
 - `.xlsx` / UTF-8・Shift_JIS `.csv` のブラウザー内解析、sheet・header行・data開始行の選択
 - 複数列をタイトル・説明・担当者・期限等へ割り当てる自由列マッピングと見出し名からの初期推測
+- 先頭20行からの見出し行自動判定、説明付き列マッピング、割り当て済み列の強調表示と再自動設定
+- Asana workspaceのproject/section一覧APIと、通常入力・WBSでの名前選択（GID直接入力もフォールバックとして維持）
+- 通常入力・サブタスク・WBSの開始日編集、SQL履歴、Asana `start_on` 送信、期限との前後関係検証
+- WBSの登録対象列（はい/いいえ、○/×、1/0）、開始日列、登録前の件数・登録先確認ダイアログ
 - 親子関係なし、識別キー・親キー、階層レベル、大項目・中項目等の階層列による親子変換
 - 複数の名前付きWBSテンプレート保存・更新・削除、レイアウト署名一致時の自動適用
 - 最大5,000行の編集可能プレビュー、対象外指定、日付・親不足・重複キー・循環参照の事前検証
 - WBS server dry-run、一括登録、行hash重複防止、部分失敗からの再開、エラーCSV
-- EF Core の11テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit / AddWbsImports SQL Server migration
+- EF Core の11テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit / AddWbsImports / AddTaskStartDates SQL Server migration
 - Development/Test の InMemory provider 差し替え
 - .NET User Secrets によるローカルSQL Server設定と環境変数による配備先差し替え
 - 再実行可能な `scripts/Test-SqlServerIntegration.ps1`
@@ -47,10 +51,10 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 31件成功、失敗0
+- xUnit: 36件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
-- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 4 migration と必須11テーブルを確認
-- 実SQL結合: 親子整理、通常Mock親子登録、WBSテンプレート・親子行・Mock登録、API再起動後の履歴再取得を確認（`1|1|1|1|1|2|2|1|1|1|2`）
+- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 5 migration と必須11テーブルを確認
+- 実SQL結合: 通常候補とWBS行の開始日・期限、親子整理、通常Mock親子登録、WBSテンプレート・親子行・Mock登録、API再起動後の履歴再取得を確認（`1|1|1|1|1|2|2|1|1|1|2`）
 - NuGet / npm dependency vulnerability scan: 既知脆弱性0
 - `dotnet format --verify-no-changes`: 成功
 - Launcher実機smoke: 通常起動で `Task Capture` ウィンドウhandle生成・応答を確認、trayプロセス維持
@@ -82,6 +86,9 @@
 - WBS Mock登録: 親子4件を登録し、全件成功を画面で確認
 - WBS実Asana登録: 親GID `1216841537461362`、子GID `1216857439579470` を作成し、「大西」を両方とも「大西努」へ解決
 - WBS実Asana再送: 同一batchで `AlreadyRegistered=true`、親子の重複作成なし
+- WBS操作性QA: 給食スパイスカレー30行Excelで見出し4行目・13列中9項目を自動判定し、開始日・期限・登録対象・親子キーを正しく割り当て
+- WBS登録先QA: 実Asana APIから「仕事リクエスト」projectを取得し、名前選択、30件・エラー0件preview、登録直前の件数・登録先確認を表示
+- WBSレスポンシブQA: PC幅とiPhone相当390pxでページ全体の横スクロール・console警告なし（preview表内だけは横スクロール可）
 
 ## 未完了 / 外部待ち
 
@@ -93,4 +100,4 @@
 
 1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声・WBSを含む短い受入テストを実施する。
 2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
-3. 運用実績を見て必要になった場合だけ、WBSの開始日・依存関係・custom field対応を追加する。
+3. 運用実績を見て必要になった場合だけ、WBSの依存関係・custom field・取込単位のロールバック支援を追加する。

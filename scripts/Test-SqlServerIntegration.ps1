@@ -107,6 +107,7 @@ try {
         title = $candidate.title
         description = $candidate.description
         assignee = 'me'
+        startDate = '2026-08-20'
         dueDate = '2026-08-31'
         subtasks = @("SQL subtask smoke $marker")
         tags = @()
@@ -157,6 +158,8 @@ try {
                 sourceKey = "P-$wbsToken"
                 title = "SQL WBS parent $marker"
                 assignee = 'me'
+                startDate = '2026-08-20'
+                dueDate = '2026-08-31'
                 sortOrder = 0
             },
             @{
@@ -164,6 +167,8 @@ try {
                 sourceKey = "C-$wbsToken"
                 parentSourceKey = "P-$wbsToken"
                 title = "SQL WBS child $marker"
+                startDate = '2026-08-21'
+                dueDate = '2026-08-30'
                 sortOrder = 1
             }
         )
@@ -217,7 +222,8 @@ try {
 SET NOCOUNT ON;
 SELECT CONCAT(
     (SELECT COUNT(*) FROM TaskRequests WHERE Id='$requestId'), '|',
-    (SELECT COUNT(*) FROM TaskCandidates WHERE TaskRequestId='$requestId'), '|',
+    (SELECT COUNT(*) FROM TaskCandidates
+        WHERE TaskRequestId='$requestId' AND StartDate='2026-08-20' AND DueDate='2026-08-31'), '|',
     (SELECT COUNT(*) FROM AsanaRegistrations r
         JOIN TaskCandidates c ON c.Id=r.TaskCandidateId
         WHERE c.TaskRequestId='$requestId' AND r.Succeeded=1 AND r.Provider='Mock'
@@ -235,7 +241,8 @@ SELECT CONCAT(
     (SELECT COUNT(*) FROM WbsImportProfiles WHERE Id='$wbsProfileId'), '|',
     (SELECT COUNT(*) FROM WbsImportBatches WHERE Id='$wbsBatchId' AND Status='Registered'), '|',
     (SELECT COUNT(*) FROM WbsImportRows
-        WHERE WbsImportBatchId='$wbsBatchId' AND Status='Registered' AND ExternalTaskGid IS NOT NULL));
+        WHERE WbsImportBatchId='$wbsBatchId' AND Status='Registered'
+          AND ExternalTaskGid IS NOT NULL AND StartDate IS NOT NULL AND DueDate IS NOT NULL));
 "@
     $countOutput = sqlcmd `
         -S $ServerInstance `
