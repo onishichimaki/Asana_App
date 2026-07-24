@@ -239,6 +239,46 @@ public sealed class ApiAsanaTaskServiceTests
         Assert.NotNull(result.WarningMessage);
     }
 
+    [Fact]
+    public async Task CreateImportTaskAsync_CreatesNestedTaskWithRowSpecificFields()
+    {
+        var handler = new SequenceHandler(
+            (HttpStatusCode.OK,
+                """{"data":[{"gid":"444555666","name":"大西 努"}],"next_page":null}"""),
+            (HttpStatusCode.Created,
+                """{"data":{"gid":"987654321","permalink_url":"https://app.asana.com/0/0/987654321","assignee":{"gid":"444555666","name":"大西 努"}}}"""));
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com/api/1.0/") };
+        var options = Microsoft.Extensions.Options.Options.Create(new AsanaOptions
+        {
+            Mode = "Api",
+            PersonalAccessToken = "test-secret",
+            DefaultWorkspaceGid = "1216675064179067",
+            DefaultProjectGid = "1216674009964669"
+        });
+        var service = new ApiAsanaTaskService(client, options);
+
+        var result = await service.CreateImportTaskAsync(
+            new AsanaImportTask(
+                "WBS子タスク",
+                "WBSから変換した説明",
+                "大西",
+                new DateOnly(2026, 9, 1),
+                "1216674009964669",
+                null),
+            "111222333",
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("大西 努", result.ResolvedAssigneeName);
+        Assert.Contains("/tasks/111222333/subtasks?", handler.Requests[1].Uri);
+        using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body!);
+        var data = requestDocument.RootElement.GetProperty("data");
+        Assert.Equal("WBS子タスク", data.GetProperty("name").GetString());
+        Assert.Equal("WBSから変換した説明", data.GetProperty("notes").GetString());
+        Assert.Equal("2026-09-01", data.GetProperty("due_on").GetString());
+        Assert.Equal("444555666", data.GetProperty("assignee").GetString());
+    }
+
     private sealed record RecordedRequest(HttpMethod Method, string Uri, string? Body);
 
     private sealed class SequenceHandler(

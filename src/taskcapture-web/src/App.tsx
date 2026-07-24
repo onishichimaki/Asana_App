@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { requestJson } from './api'
+import WbsImport from './WbsImport'
 import './App.css'
 
 type InputSource = 'text' | 'paste' | 'voice' | 'clipboard' | 'launcher' | 'image' | 'minutes'
@@ -21,36 +23,12 @@ declare global {
   }
 }
 
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? ''
 const maxInputLength = 10_000
 const maxImageBytes = 10 * 1024 * 1024
 const maxMinutesBytes = 2 * 1024 * 1024
 const acceptedMinutesExtensions = ['.txt', '.md', '.csv']
 const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp']
 const isLauncher = new URLSearchParams(window.location.search).get('launcher') === '1'
-
-function getClientKey() {
-  const storageKey = 'task-capture-client-key'
-  const current = localStorage.getItem(storageKey)
-  if (current) return current
-  const generated = globalThis.crypto?.randomUUID?.()
-    ?? `web-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  localStorage.setItem(storageKey, generated)
-  return generated
-}
-
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', 'X-TaskCapture-Client': getClientKey(), ...init?.headers },
-  })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    const validation = data?.errors ? Object.values(data.errors).flat().join(' ') : ''
-    throw new Error(validation || data?.detail || data?.errorMessage || '処理に失敗しました。もう一度お試しください。')
-  }
-  return data as T
-}
 
 function toDraft(candidate: TaskCandidate): CandidateDraft {
   return { ...candidate, subtasksText: candidate.subtasks.join('\n'), tagsText: candidate.tags.join(', '), customFieldsText: Object.keys(candidate.customFields).length ? JSON.stringify(candidate.customFields, null, 2) : '' }
@@ -92,6 +70,7 @@ async function readMinutesText(file: File) {
 }
 
 function App() {
+  const [mode, setMode] = useState<'capture' | 'wbs'>('capture')
   const [rawText, setRawText] = useState('')
   const [source, setSource] = useState<InputSource>('text')
   const [candidate, setCandidate] = useState<CandidateDraft | null>(null)
@@ -326,6 +305,15 @@ function App() {
         <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
       </header>
 
+      {!isLauncher && <nav className="mode-switch" aria-label="登録方法">
+        <button type="button" className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>すぐ登録</button>
+        <button type="button" className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>WBS一括取込</button>
+      </nav>}
+
+      {mode === 'wbs' && !isLauncher
+        ? <WbsImport />
+        : <>
+
       <section className="panel input-panel" aria-labelledby="input-heading">
         <div className="section-heading">
           <h2 id="input-heading">内容を入力</h2>
@@ -389,6 +377,7 @@ function App() {
       {registration && <section className="success-card" aria-live="polite"><div className="success-icon" aria-hidden="true">✓</div><div><strong>{registration.provider === 'Mock' ? 'モックへ登録しました' : 'Asanaへ登録しました'}</strong><p>{registration.externalTaskGid ? `Task ID: ${registration.externalTaskGid}` : '登録履歴を保存しました。'}{registration.subtasks.length > 0 ? ` / サブタスク ${registration.subtasks.filter((item) => item.succeeded).length}件` : ''}</p>{registration.resolvedAssigneeName && <p className="assignee-result">担当者: {registration.resolvedAssigneeName}</p>}{registration.warningMessage && <p className="registration-warning">! {registration.warningMessage}</p>}{registration.externalTaskUrl && <a href={registration.externalTaskUrl} target="_blank" rel="noreferrer">Asanaで確認する ↗</a>}</div><button type="button" onClick={reset}>続けて登録</button></section>}
       {message && <div className="error-message" role="alert"><span aria-hidden="true">!</span>{message}</div>}
       <footer><button type="button" onClick={reset} disabled={!rawText && !candidate}>入力をクリア</button></footer>
+        </>}
     </main>
   )
 }

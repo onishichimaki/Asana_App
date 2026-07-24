@@ -124,8 +124,68 @@ try {
         throw 'The Mock registration response was not successful.'
     }
 
+    $wbsToken = [guid]::NewGuid().ToString('N')
+    $profileBody = @{
+        name = "SQL WBS smoke $wbsToken"
+        layoutSignature = ('a' * 64)
+        sheetName = 'WBS'
+        headerRow = 1
+        dataStartRow = 2
+        mapping = @{
+            hierarchyMode = 'parentKey'
+            roles = @{ '0' = 'key'; '1' = 'parentKey'; '2' = 'title' }
+            titleSeparator = ' '
+            descriptionSeparator = "`n"
+            dateFormat = 'auto'
+        }
+    } | ConvertTo-Json -Depth 8
+    $wbsProfile = Invoke-RestMethod `
+        -Method Post `
+        -Uri "$baseUrl/api/wbs-imports/profiles" `
+        -Headers $headers `
+        -ContentType 'application/json; charset=utf-8' `
+        -Body $profileBody
+    $batchBody = @{
+        fileName = 'sql-smoke.csv'
+        fileHash = ($wbsToken + $wbsToken)
+        sheetName = 'WBS'
+        layoutSignature = ('a' * 64)
+        profileId = $wbsProfile.id
+        rows = @(
+            @{
+                sourceRowNumber = 2
+                sourceKey = "P-$wbsToken"
+                title = "SQL WBS parent $marker"
+                assignee = 'me'
+                sortOrder = 0
+            },
+            @{
+                sourceRowNumber = 3
+                sourceKey = "C-$wbsToken"
+                parentSourceKey = "P-$wbsToken"
+                title = "SQL WBS child $marker"
+                sortOrder = 1
+            }
+        )
+    } | ConvertTo-Json -Depth 8
+    $wbsBatch = Invoke-RestMethod `
+        -Method Post `
+        -Uri "$baseUrl/api/wbs-imports/batches" `
+        -Headers $headers `
+        -ContentType 'application/json; charset=utf-8' `
+        -Body $batchBody
+    $wbsRegistered = Invoke-RestMethod `
+        -Method Post `
+        -Uri "$baseUrl/api/wbs-imports/batches/$($wbsBatch.id)/register" `
+        -Headers $headers
+    if ($wbsRegistered.status -ne 'Registered' -or $wbsRegistered.succeededRows -ne 2) {
+        throw 'The WBS Mock registration response was not successful.'
+    }
+
     $requestId = [string]$organized.taskRequestId
     $candidateId = [string]$candidate.id
+    $wbsProfileId = [string]$wbsProfile.id
+    $wbsBatchId = [string]$wbsBatch.id
     Stop-TaskCaptureApi $firstProcess
     $firstProcess = $null
 
@@ -143,6 +203,12 @@ try {
     }
     if ($persisted.status -ne 'Registered' -or -not $persisted.registration.succeeded) {
         throw 'The persisted registration did not have the expected state.'
+    }
+    $persistedWbs = Invoke-RestMethod `
+        -Uri "$baseUrl/api/wbs-imports/batches/$wbsBatchId" `
+        -Headers $headers
+    if ($persistedWbs.status -ne 'Registered' -or $persistedWbs.succeededRows -ne 2) {
+        throw 'The persisted WBS batch did not have the expected state.'
     }
     Stop-TaskCaptureApi $secondProcess
     $secondProcess = $null
@@ -165,7 +231,11 @@ SELECT CONCAT(
         WHERE c.TaskRequestId='$requestId' AND sr.Succeeded=1 AND sr.Provider='Mock'), '|',
     (SELECT COUNT(*) FROM AuditLogs WHERE EntityId IN ('$requestId','$candidateId')), '|',
     (SELECT COUNT(*) FROM ApplicationSettings), '|',
-    (SELECT COUNT(*) FROM Users WHERE ClientKey='sql-server-smoke'));
+    (SELECT COUNT(*) FROM Users WHERE ClientKey='sql-server-smoke'), '|',
+    (SELECT COUNT(*) FROM WbsImportProfiles WHERE Id='$wbsProfileId'), '|',
+    (SELECT COUNT(*) FROM WbsImportBatches WHERE Id='$wbsBatchId' AND Status='Registered'), '|',
+    (SELECT COUNT(*) FROM WbsImportRows
+        WHERE WbsImportBatchId='$wbsBatchId' AND Status='Registered' AND ExternalTaskGid IS NOT NULL));
 "@
     $countOutput = sqlcmd `
         -S $ServerInstance `
@@ -178,7 +248,7 @@ SELECT CONCAT(
         -Q $query
     $counts = ($countOutput | Where-Object { $_.Trim() } | Select-Object -First 1).Trim()
     $countParts = @($counts -split '\|' | ForEach-Object { [int]$_ })
-    $countsAreValid = $countParts.Count -eq 8 -and
+    $countsAreValid = $countParts.Count -eq 11 -and
         $countParts[0] -eq 1 -and
         $countParts[1] -eq 1 -and
         $countParts[2] -eq 1 -and
@@ -186,7 +256,10 @@ SELECT CONCAT(
         $countParts[4] -eq 1 -and
         $countParts[5] -ge 2 -and
         $countParts[6] -ge 2 -and
-        $countParts[7] -eq 1
+        $countParts[7] -eq 1 -and
+        $countParts[8] -eq 1 -and
+        $countParts[9] -eq 1 -and
+        $countParts[10] -eq 2
     if (-not $countsAreValid) {
         throw "Unexpected SQL row counts: $counts"
     }
@@ -195,9 +268,11 @@ SELECT CONCAT(
     Write-Output "SQL_SMOKE_CANDIDATE_ID=$candidateId"
     Write-Output "SQL_SMOKE_REGISTRATION_ID=$($registered.registrationId)"
     Write-Output "SQL_SMOKE_EXTERNAL_GID=$($registered.externalTaskGid)"
+    Write-Output "SQL_SMOKE_WBS_PROFILE_ID=$wbsProfileId"
+    Write-Output "SQL_SMOKE_WBS_BATCH_ID=$wbsBatchId"
     Write-Output 'SQL_SMOKE_WEB_SPA=PASS'
     Write-Output 'SQL_SMOKE_RESTART_PERSISTENCE=PASS'
-    Write-Output "SQL_COUNTS_REQUEST_CANDIDATE_REGISTRATION_SUBTASK_SUBTASKREGISTRATION_AUDIT_SETTINGS_USER=$counts"
+    Write-Output "SQL_COUNTS_REQUEST_CANDIDATE_REGISTRATION_SUBTASK_SUBTASKREGISTRATION_AUDIT_SETTINGS_USER_WBSPROFILE_WBSBATCH_WBSROWS=$counts"
     Write-Output 'SQL_PERSISTENCE_INTEGRATION=PASS'
 }
 finally {

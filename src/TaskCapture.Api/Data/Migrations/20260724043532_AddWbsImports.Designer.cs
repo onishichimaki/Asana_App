@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaskCapture.Api.Data;
 
@@ -11,9 +12,11 @@ using TaskCapture.Api.Data;
 namespace TaskCapture.Api.Data.Migrations
 {
     [DbContext(typeof(TaskCaptureDbContext))]
-    partial class TaskCaptureDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260724043532_AddWbsImports")]
+    partial class AddWbsImports
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

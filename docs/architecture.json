@@ -1,15 +1,24 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "メイリオUI優先のReact 1画面でテキスト、議事録、画像OCR、音声を取り込み、親タスクとサブタスク候補へ整理・確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが親子の履歴と監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "メイリオUI優先のReact SPAでテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込み、親タスクとサブタスクを確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが通常入力とWBSの行別履歴・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
       "name": "Responsive Web UI",
       "type": "React SPA",
-      "responsibility": "メイリオUIを優先し、テキスト、貼り付け、議事録ファイル、ブラウザー内画像OCR、Web Speech API入力と親タスク・サブタスク候補の確認・修正・登録を1画面で提供する。",
-      "main_inputs": ["利用者テキスト", "TXT/MD/CSV", "JPEG/PNG/WebP", "音声", "launcher clipboard message", "API response"],
-      "main_outputs": ["organize request", "candidate update", "registration request"],
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
+      "responsibility": "メイリオUIを優先し、通常のテキスト・ファイル・音声入力とWBS一括取込を同じSPAの明確な2モードで提供する。",
+      "main_inputs": ["利用者テキスト", "TXT/MD/CSV", "JPEG/PNG/WebP", "XLSX/CSV WBS", "音声", "launcher clipboard message", "API response"],
+      "main_outputs": ["organize request", "candidate update", "registration request", "normalized WBS rows"],
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
+    },
+    {
+      "id": "wbs_import_ui",
+      "name": "WBS Import UI",
+      "type": "React batch-import surface",
+      "responsibility": "XLSX/CSVをブラウザー内で解析し、sheet・行・自由列・4階層方式を指定する。複数profileの保存と自動適用、編集可能preview、確定・登録・再試行・エラーCSVを調停する。",
+      "main_inputs": ["XLSX/CSV file", "column roles", "hierarchy mode", "profile selection", "preview edits"],
+      "main_outputs": ["layout signature", "profile request", "normalized rows", "batch registration request"],
+      "source_files": ["src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/api.ts", "src/taskcapture-web/package.json", "tests/fixtures/wbs-parent-key.csv", "tests/fixtures/wbs-level.csv", "tests/fixtures/wbs-hierarchy-columns.csv"]
     },
     {
       "id": "api_host",
@@ -60,10 +69,10 @@
       "id": "persistence",
       "name": "Persistence",
       "type": "EF Core / SQL Server",
-      "responsibility": "親子候補・登録結果を含む8テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
+      "responsibility": "通常入力とWBSの親子候補・行別登録結果を含む11テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
       "main_inputs": ["entities", "connection configuration"],
       "main_outputs": ["SQL Server rows", "migration DDL"],
-      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs"]
+      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
     },
     {
       "id": "windows_launcher",
@@ -89,6 +98,13 @@
       "type": "Desktop host surface",
       "description": "520x620を既定とする小型のWebView2 host。ネイティブ画面は持たずTask Capture SPAを再利用する。",
       "source_files": ["src/TaskCapture.Launcher/LauncherForm.cs", "src/taskcapture-web/src/App.tsx"]
+    },
+    {
+      "id": "wbs_import_screen",
+      "name": "WBS一括取込画面",
+      "type": "Responsive SPA mode",
+      "description": "ファイル、レイアウトと列、登録前previewの3段階を縦に表示し、PC・タブレット・スマートフォンで同じ操作を提供する。",
+      "source_files": ["src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/App.css"]
     }
   ],
   "apis": [
@@ -126,6 +142,34 @@
       "type": "HTTP POST",
       "description": "親子候補の最終値を保存し、親を作成後に子を登録する。部分失敗時は成功済みの親・子を二重登録せず未完了の子だけ再試行する。",
       "source_files": ["src/TaskCapture.Api/Controllers/TaskCandidatesController.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+    },
+    {
+      "id": "wbs_profiles_api",
+      "name": "GET/POST/PUT/DELETE /api/wbs-imports/profiles",
+      "type": "HTTP CRUD",
+      "description": "利用者ごとの名前付きWBS変換profileを一覧・保存・更新・削除する。削除後も過去batchは保持する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Contracts/WbsImportDtos.cs"]
+    },
+    {
+      "id": "wbs_batches_api",
+      "name": "POST/GET /api/wbs-imports/batches",
+      "type": "HTTP batch API",
+      "description": "最大5,000件の正規化行をserver dry-runして保存し、batchと行別の検証・登録結果を返す。",
+      "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Contracts/WbsImportDtos.cs"]
+    },
+    {
+      "id": "wbs_register_api",
+      "name": "POST /api/wbs-imports/batches/{id}/register",
+      "type": "HTTP POST",
+      "description": "親優先でWBS行を登録し、成功済み・duplicate行を再作成せず、失敗・blocked行を再開可能にする。",
+      "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
+    },
+    {
+      "id": "wbs_errors_api",
+      "name": "GET /api/wbs-imports/batches/{id}/errors.csv",
+      "type": "HTTP GET",
+      "description": "未登録行と安全な理由をUTF-8 BOM付きCSVで出力する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
     }
   ],
   "database": {
@@ -177,6 +221,24 @@
         "name": "AuditLogs",
         "description": "整理・編集・登録のイベント、entity、correlation ID、安全な詳細を保持する。",
         "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/TaskWorkflowService.cs"]
+      },
+      {
+        "id": "wbs_import_profiles",
+        "name": "WbsImportProfiles",
+        "description": "利用者ごとの名前、layout signature、sheet・行、列と階層のMappingJson、既定project/sectionを保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
+      },
+      {
+        "id": "wbs_import_batches",
+        "name": "WbsImportBatches",
+        "description": "ファイルhash、layout signature、profile参照、登録先、行数、Ready/Invalid/Registered等のbatch状態を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
+      },
+      {
+        "id": "wbs_import_rows",
+        "name": "WbsImportRows",
+        "description": "元行、親行、深度、正規化項目、row/content hash、検証、Asana GID/URL、担当者解決、失敗理由を行単位で保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
       }
     ],
     "relationships": [
@@ -215,16 +277,40 @@
         "name": "Users 1:N AuditLogs",
         "description": "利用者の監査イベント。削除連鎖はNoAction。",
         "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs"]
+      },
+      {
+        "id": "user_wbs_profiles",
+        "name": "Users 1:N WbsImportProfiles",
+        "description": "利用者が複数のレイアウトテンプレートを所有する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
+      },
+      {
+        "id": "user_wbs_batches",
+        "name": "Users 1:N WbsImportBatches",
+        "description": "利用者ごとの取込履歴。profileを削除してもbatchは残る。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
+      },
+      {
+        "id": "profile_wbs_batches",
+        "name": "WbsImportProfiles 1:N WbsImportBatches",
+        "description": "任意参照。SQL ServerではNO ACTIONとし、削除前にapplication serviceが参照をnullへする。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
+      },
+      {
+        "id": "batch_wbs_rows",
+        "name": "WbsImportBatches 1:N WbsImportRows / self parent",
+        "description": "batch行を親子自己参照で保持し、親行を先に登録する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
       }
     ]
   },
   "batches": [
     {
-      "id": "no_scheduled_batches",
-      "name": "定期バッチなし",
-      "type": "Not found / intentionally absent",
-      "description": "MVPは同期的な登録専用で、schedulerやbackground jobは実装していない。",
-      "source_files": ["src/TaskCapture.Api/Program.cs", "ARCHITECTURE.md"]
+      "id": "wbs_import_batch",
+      "name": "WBS取込batch",
+      "type": "User-triggered synchronous batch",
+      "description": "schedulerは持たず、利用者の確定操作で最大5,000行を親優先に処理する。各行を逐次保存し、再送時は成功済み・duplicate行を飛ばす。",
+      "source_files": ["src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Controllers/WbsImportsController.cs", "IMPLEMENTATION_PLAN.md"]
     }
   ],
   "external_integrations": [
@@ -246,15 +332,15 @@
       "id": "sql_server",
       "name": "SQL Server",
       "type": "Relational database",
-      "description": "EF Core SqlServer providerと3 migrationで親子候補、外部登録、担当者解決結果を保存する。",
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs"]
+      "description": "EF Core SqlServer providerと4 migrationで通常入力・WBS親子、外部登録、担当者解決結果を11テーブルへ保存する。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
     },
     {
       "id": "browser_capture_apis",
-      "name": "Clipboard / File / OCR / Web Speech",
+      "name": "Clipboard / File / OCR / WBS / Web Speech",
       "type": "Browser APIs",
-      "description": "Clipboard、UTF-8/Shift_JIS議事録読込、Tesseract.js日本語OCR、ja-JP音声入力をブラウザー内で行い、抽出文字列だけをAPIへ渡す。",
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/package.json", "REQUIREMENTS.md"]
+      "description": "Clipboard、議事録読込、Tesseract.js日本語OCR、ja-JP音声、XLSX/UTF-8・Shift_JIS CSVのWBS解析をブラウザー内で行い、抽出文字列または確認済み正規化行だけをAPIへ渡す。",
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/package.json", "REQUIREMENTS.md"]
     },
     {
       "id": "webview2_runtime",
@@ -288,6 +374,14 @@
       "processing": ["RegisterHotKey", "WebView2 navigate", "clipboard web message", "registration-complete message"],
       "outputs": ["prefilled SPA", "hidden window after success"],
       "source_files": ["src/TaskCapture.Launcher/LauncherApplicationContext.cs", "src/TaskCapture.Launcher/LauncherForm.cs", "src/taskcapture-web/src/App.tsx"]
+    },
+    {
+      "id": "wbs_import_flow",
+      "name": "WBSファイルからAsana親子登録",
+      "inputs": ["XLSX/CSV", "sheet/header/data row", "column mapping", "hierarchy mode", "preview edits"],
+      "processing": ["browser parse and layout signature", "profile auto-apply or manual mapping", "client parent/cycle/date validation", "editable preview", "server dry-run", "profile/batch/row save", "parent-first Asana registration", "row-hash duplicate lookup", "per-row save and retry"],
+      "outputs": ["named mapping profile", "normalized parent/child rows", "per-row GID/URL/assignee result", "retry state", "error CSV"],
+      "source_files": ["src/taskcapture-web/src/WbsImport.tsx", "src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
     }
   ],
   "dependencies": [
@@ -299,8 +393,8 @@
     },
     {
       "id": "web_stack",
-      "name": "React 19 / TypeScript 6 / Vite 8 / Tesseract.js 7",
-      "description": "SPA実装、型検査、production bundle、ブラウザー内日本語OCR。",
+      "name": "React 19 / TypeScript 6 / Vite 8 / Tesseract.js 7 / read-excel-file",
+      "description": "SPA実装、型検査、production bundle、ブラウザー内日本語OCRとXLSX sheet解析。",
       "source_files": ["src/taskcapture-web/package.json", "src/taskcapture-web/vite.config.ts"]
     },
     {
@@ -326,7 +420,7 @@
     {
       "id": "local_integrations_only",
       "name": "実連携検証はローカル限定",
-      "description": "DESKTOP-RQ3T767のSQL ServerとAsanaの限定projectでは、自由文担当者の一意解決と親1件・子2件の実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
+      "description": "DESKTOP-RQ3T767のSQL Serverでは11テーブル、Asana限定projectでは通常入力とWBSの自由文担当者解決・親子実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
       "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json"]
     },
     {
@@ -345,22 +439,22 @@
       "id": "asana_parent_child_non_atomic",
       "name": "Asana親子登録は非原子的",
       "description": "親作成と各サブタスク作成は別HTTP要求で単一トランザクションにできない。各結果をSQL Serverへ逐次保存し、PartiallyRegisteredから未完了の子だけを再試行する。",
-      "source_files": ["src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "DECISIONS.md"]
+      "source_files": ["src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "DECISIONS.md"]
     },
     {
       "id": "assignee_name_ambiguity",
       "name": "担当者名の同姓・表記差",
       "description": "自由文が0件または複数ユーザーに一致する場合は誤割り当てを避けて未割り当てで登録し、UIとSQLへ警告を残す。実環境では「大西」から「大西努」への一意解決を確認済み。",
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "tests/TaskCapture.Api.Tests/ApiAsanaTaskServiceTests.cs", "STATUS.md"]
+    },
+    {
+      "id": "wbs_mapping_confirmation",
+      "name": "WBS列マッピングの利用者確認",
+      "description": "見出し名からの初期推測は補助であり、同名列や特殊日付を完全には判断できない。profile保存前と一括登録前に利用者が列・親子・件数・日付を確認し、server dry-runを通す。",
+      "source_files": ["src/taskcapture-web/src/WbsImport.tsx", "src/TaskCapture.Api/Services/WbsImportService.cs", "REQUIREMENTS.md"]
     }
   ],
   "recommended_next_actions": [
-    {
-      "id": "wbs_import",
-      "name": "可変レイアウトWBS取込",
-      "description": "XLSX/CSVのsheet・header・列・階層を利用者が指定し、プロジェクト別ImportProfile、親子preview、ImportBatches/ImportRows、行hash、失敗行再試行を実装する。",
-      "source_files": ["REQUIREMENTS.md", "ARCHITECTURE.md", "IMPLEMENTATION_PLAN.md", "DECISIONS.md"]
-    },
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",
@@ -370,7 +464,7 @@
     {
       "id": "device_qa",
       "name": "実端末QA",
-      "description": "iPhone/iPadのHTTPS URLでカメラOCR・音声・clipboard・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
+      "description": "iPhone/iPadのHTTPS URLでカメラOCR・音声・clipboard・WBSファイル選択・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
       "source_files": ["REQUIREMENTS.md", "src/TaskCapture.Launcher/LauncherApplicationContext.cs"]
     }
   ]

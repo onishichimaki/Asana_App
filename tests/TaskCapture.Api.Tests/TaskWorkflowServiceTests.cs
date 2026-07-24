@@ -143,5 +143,11 @@ public sealed class TaskWorkflowServiceTests
                 ? new AsanaRegistrationResult(false, "Test", null, null, "TEMPORARY", "Temporary failure")
                 : new AsanaRegistrationResult(true, "Test", $"subtask-{current}", null));
         }
+
+        public Task<AsanaRegistrationResult> CreateImportTaskAsync(
+            AsanaImportTask task,
+            string? parentTaskGid,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new AsanaRegistrationResult(true, "Test", $"import-{task.Title}", null));
     }
 }

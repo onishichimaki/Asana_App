@@ -13,11 +13,11 @@
     <div class="wrap">
       <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-24</p>
       <h1>Task Capture for Asana</h1>
-      <p>テキスト・議事録・画像OCR・音声をGeminiまたはルールで親タスクとサブタスク候補へ変え、確認後にAsanaへ渡す登録専用MVP。ファイル文字化はブラウザー内、AIキー・PAT・履歴はAPI境界の内側に置きます。</p>
+      <p>テキスト・議事録・画像OCR・音声、または可変レイアウトのExcel/CSV WBSを親タスクとサブタスクへ変え、確認後にAsanaへ渡す登録専用MVP。ファイル解析はブラウザー内、AIキー・PAT・履歴はAPI境界の内側に置きます。</p>
       <div class="facts">
-        <div class="fact"><strong>1 screen</strong><span>入力 → 整理 → 確認 → 登録</span></div>
-        <div class="fact"><strong>8 tables</strong><span>親子候補・親子登録・設定・監査</span></div>
-        <div class="fact"><strong>3 safe defaults</strong><span>InMemory / RuleBased / Mock</span></div>
+        <div class="fact"><strong>2 capture modes</strong><span>すぐ登録 / WBS一括取込</span></div>
+        <div class="fact"><strong>11 tables</strong><span>通常入力8 + WBS profile/batch/row</span></div>
+        <div class="fact"><strong>4 hierarchy modes</strong><span>なし / 親キー / レベル / 階層列</span></div>
       </div>
     </div>
   </header>
@@ -31,6 +31,7 @@
         <div class="lanes">
           <div class="lane"><p class="lane-label">CLIENT SURFACES</p><div class="nodes">
             <button class="node active" data-node="web"><span class="type">React SPA</span><strong>Responsive Web UI</strong><small>text · minutes · image OCR · voice</small></button>
+            <button class="node" data-node="wbs"><span class="type">React batch UI</span><strong>WBS Import UI</strong><small>XLSX/CSV · mapping · preview</small></button>
             <button class="node" data-node="launcher"><span class="type">WinForms</span><strong>Windows Launcher</strong><small>tray · Ctrl+Shift+A</small></button>
             <button class="node" data-node="webview"><span class="type">WebView2</span><strong>Launcher Bridge</strong><small>clipboard · autoclose</small></button>
           </div></div>
@@ -38,12 +39,13 @@
           <div class="lane"><p class="lane-label">SERVER APPLICATION</p><div class="nodes">
             <button class="node" data-node="api"><span class="type">ASP.NET Core</span><strong>API Host</strong><small>validation · Problem Details</small></button>
             <button class="node" data-node="workflow"><span class="type">Application</span><strong>Task Workflow</strong><small>parent-first · resume · audit</small></button>
+            <button class="node" data-node="wbsflow"><span class="type">Application</span><strong>WBS Import Workflow</strong><small>dry-run · row hash · retry</small></button>
             <button class="node" data-node="organizer"><span class="type">Domain service</span><strong>Task Organizer</strong><small>parent · subtasks · owner · due</small></button>
             <button class="node" data-node="gemini"><span class="type">AI adapter</span><strong>Gemini + fallback</strong><small>JSON Schema · RuleBased</small></button>
           </div></div>
           <div class="arrow">↓ adapter / EF Core ↓</div>
           <div class="lane"><p class="lane-label">DATA & EXTERNAL</p><div class="nodes">
-            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>8 tables · 3 migrations</small></button>
+            <button class="node" data-node="db"><span class="type">SQL Server</span><strong>Persistence</strong><small>11 tables · 4 migrations</small></button>
             <button class="node" data-node="asana"><span class="type">REST adapter</span><strong>Asana / Mock</strong><small>server-side PAT only</small></button>
             <button class="node" data-node="audit"><span class="type">EF entities</span><strong>History & Audit</strong><small>UTC · correlation ID</small></button>
           </div></div>
@@ -56,12 +58,16 @@
     </div>
 
     <div class="inventory" data-group="all surface">
-      <section class="section"><div class="section-title"><h2>HTTP API</h2><span>5 endpoints</span></div><div class="cards">
+      <section class="section"><div class="section-title"><h2>HTTP API</h2><span>13 endpoints</span></div><div class="cards">
         <div class="card"><span class="icon">GET</span><div><strong>/api/health</strong><p>modeを返す。秘密情報は返さない。</p></div></div>
         <div class="card"><span class="icon">POST</span><div><strong>/api/task-requests/organize</strong><p>原文保存と編集可能な親子候補生成。</p></div></div>
         <div class="card"><span class="icon">PUT</span><div><strong>/api/task-candidates/{id}</strong><p>確認・修正した親子候補を保存。</p></div></div>
         <div class="card"><span class="icon">POST</span><div><strong>/api/task-candidates/{id}/register</strong><p>親から子へ冪等に登録し、部分失敗から再開。</p></div></div>
         <div class="card"><span class="icon">GET</span><div><strong>/api/task-requests/recent</strong><p>直近1〜20件。現在の1画面UIでは未使用。</p></div></div>
+        <div class="card"><span class="icon">CRUD</span><div><strong>/api/wbs-imports/profiles</strong><p>複数の名前付き変換テンプレートを保存・自動適用・更新・削除。</p></div></div>
+        <div class="card"><span class="icon">POST</span><div><strong>/api/wbs-imports/batches</strong><p>正規化行をserver dry-runし、親子検証と履歴を保存。</p></div></div>
+        <div class="card"><span class="icon">POST</span><div><strong>/api/wbs-imports/batches/{id}/register</strong><p>親優先、行hash重複防止、部分失敗からの再開。</p></div></div>
+        <div class="card"><span class="icon">GET</span><div><strong>/api/wbs-imports/batches/{id}/errors.csv</strong><p>未登録行と理由をCSV出力。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Database</h2><span>EF Core migration</span></div><div class="cards">
         <div class="card"><span class="icon">U</span><div><strong>Users</strong><p>限定利用のclient key。資格情報なし。</p></div></div>
@@ -71,6 +77,8 @@
         <div class="card"><span class="icon">AC</span><div><strong>AsanaSubtaskRegistrations</strong><p>子ごとの試行結果。成功済みは再作成しない。</p></div></div>
         <div class="card"><span class="icon">S</span><div><strong>ApplicationSettings</strong><p>mode等の非秘密メタデータ。</p></div></div>
         <div class="card"><span class="icon">L</span><div><strong>AuditLogs</strong><p>イベント、entity、correlation ID。</p></div></div>
+        <div class="card"><span class="icon">W</span><div><strong>WbsImportProfiles</strong><p>layout signature、sheet・行、列・階層mapping、登録先。</p></div></div>
+        <div class="card"><span class="icon">WB</span><div><strong>WbsImportBatches → WbsImportRows</strong><p>親子自己参照、row hash、行別Asana結果、再試行状態。</p></div></div>
       </div></section>
     </div>
 
@@ -80,13 +88,14 @@
         <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで親と0〜6件の子へ整理。実通信確認済み。</p></div></div>
         <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
         <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
-        <div class="card"><span class="icon">OS</span><div><strong>Clipboard / File / OCR / Speech</strong><p>議事録と画像はブラウザー内で文字化し、画像本体はAPIへ送らない。</p></div></div>
+        <div class="card"><span class="icon">OS</span><div><strong>Clipboard / File / OCR / Speech</strong><p>議事録・画像・WBSはブラウザー内で文字化または正規化し、ファイル本体はAPIへ送らない。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Data flow</h2><span>同期MVP</span></div><div class="cards">
         <div class="card"><span class="icon">1</span><div><strong>Capture</strong><p>端末入力・ファイル文字化 → React → validated HTTP JSON。</p></div></div>
         <div class="card"><span class="icon">2</span><div><strong>Organize</strong><p>TaskRequest → Gemini / RuleBased → 親候補 + 順序付きサブタスク。</p></div></div>
         <div class="card"><span class="icon">3</span><div><strong>Confirm</strong><p>親の基本4項目と子を編集。高度な項目は折りたたみ。</p></div></div>
         <div class="card"><span class="icon">4</span><div><strong>Register</strong><p>担当者名解決 → 親作成・実担当者保存 → 同じ担当者で子作成。部分失敗は再開。</p></div></div>
+        <div class="card"><span class="icon">W</span><div><strong>WBS import</strong><p>XLSX/CSV → 自由列・4階層方式 → 編集preview → server dry-run → 親優先の行別登録。</p></div></div>
       </div></section>
     </div>
 
@@ -98,27 +107,29 @@
         <div class="card risk"><span class="icon">?</span><div><strong>OCR初回モデル取得</strong><p>初回のみ日本語モデル取得が必要。精度は画像品質に依存し、確認・修正を前提とする。</p></div></div>
         <div class="card risk"><span class="icon">↻</span><div><strong>Asana親子登録は非原子的</strong><p>各HTTP結果を逐次保存し、部分失敗時は未完了の子だけを再試行する。</p></div></div>
         <div class="card risk"><span class="icon">人</span><div><strong>担当者名の同姓・表記差</strong><p>0件・複数一致は未割り当てと警告にし、誤割り当てを防ぐ。</p></div></div>
+        <div class="card risk"><span class="icon">表</span><div><strong>WBSマッピングは確認必須</strong><p>自動推測は補助。列・親子・件数・日付をpreviewとserver dry-runで確認する。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
-        <div class="card"><span class="icon">1</span><div><strong>可変レイアウトWBS取込</strong><p>XLSX/CSVの自由列・階層マッピング、テンプレート、preview、冪等な一括登録。</p></div></div>
-        <div class="card"><span class="icon">2</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
-        <div class="card"><span class="icon">3</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard、Windows tray/hotkey。</p></div></div>
+        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>Secret Store、組織認証、TLS、rate limit、運用ログ保護を設定。</p></div></div>
+        <div class="card"><span class="icon">2</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard・WBS、Windows tray/hotkey。</p></div></div>
       </div></section>
     </div>
     <div class="footer-note">Machine-readable inventory: <strong>docs/architecture.json</strong> · Maintenance guide: <strong>docs/architecture_readme.md</strong> · 未確認事項は risks_or_unknowns にのみ記録します。</div>
   </main>
   <script>
     const details={
-      web:{type:'React SPA',name:'Responsive Web UI',description:'メイリオUIを優先し、テキスト、議事録、Tesseract.js画像OCR、Web Speech API入力と親子候補の確認・修正・登録を1画面で提供します。',flow:'利用者/ファイル/launcher message → browser text extraction → HTTP JSON → editable parent/subtasks / registration result',sources:['src/taskcapture-web/src/App.tsx','src/taskcapture-web/src/App.css','src/taskcapture-web/package.json','src/taskcapture-web/vite.config.ts']},
+      web:{type:'React SPA',name:'Responsive Web UI',description:'メイリオUIを優先し、通常入力とWBS一括取込を明確な2モードで提供します。',flow:'利用者/ファイル/launcher message → browser extraction or normalization → HTTP JSON → editable parent/subtasks / row results',sources:['src/taskcapture-web/src/App.tsx','src/taskcapture-web/src/WbsImport.tsx','src/taskcapture-web/src/App.css','src/taskcapture-web/package.json']},
+      wbs:{type:'React batch UI',name:'WBS Import UI',description:'XLSX/CSVをブラウザー内で解析し、sheet・行・自由列・4階層方式、複数profile、編集preview、一括登録とエラーCSVを提供します。',flow:'file → parse → mapping/profile → client preview → normalized rows',sources:['src/taskcapture-web/src/WbsImport.tsx','src/taskcapture-web/src/api.ts','tests/fixtures/wbs-parent-key.csv','tests/fixtures/wbs-level.csv','tests/fixtures/wbs-hierarchy-columns.csv']},
       launcher:{type:'WinForms',name:'Windows Launcher',description:'trayに常駐し、Ctrl+Shift+Aまたはメニューから小型入力画面を開きます。',flow:'global hotkey / tray / clipboard → LauncherForm',sources:['src/TaskCapture.Launcher/LauncherApplicationContext.cs','src/TaskCapture.Launcher/Program.cs']},
       webview:{type:'WebView2',name:'Launcher Bridge',description:'同じReact画面をhostし、clipboardをJSON messageで渡し、登録完了messageで画面を隠します。',flow:'Windows clipboard ⇄ JSON web message ⇄ React SPA',sources:['src/TaskCapture.Launcher/LauncherForm.cs','src/taskcapture-web/src/App.tsx']},
       api:{type:'ASP.NET Core',name:'API Host',description:'DI、DB provider切替、CORS、Controller、Problem Details、production SPA配信を構成します。',flow:'HTTP / configuration → controllers and services → HTTP / static assets',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs']},
       workflow:{type:'Application Service',name:'Task Workflow',description:'入力保存、親子候補生成・更新、親先行の冪等登録、部分失敗からの再開、状態遷移、監査を調停します。',flow:'validated DTO → parent/child entities → adapters → complete or partial registration response',sources:['src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Contracts/TaskDtos.cs']},
+      wbsflow:{type:'Application Service',name:'WBS Import Workflow',description:'最大5,000行をserver dry-runし、親不足・循環・重複を検証します。親優先に登録し、row hashで重複を防ぎ、失敗行だけ再開します。',flow:'normalized rows → profile/batch/row → Asana/Mock → per-row save/retry',sources:['src/TaskCapture.Api/Services/WbsImportService.cs','src/TaskCapture.Api/Contracts/WbsImportDtos.cs','src/TaskCapture.Api/Controllers/WbsImportsController.cs']},
       organizer:{type:'Domain Service',name:'Task Organizer',description:'設定でRuleBasedまたはGeminiを選択し、親の基本項目とサブタスク候補を抽出します。ITaskOrganizer境界は将来のAzure OpenAIでも維持します。',flow:'raw text + Japan date → provider adapter → OrganizedTask with subtasks',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Services/TaskOrganizer.cs','src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs']},
       gemini:{type:'AI Adapter',name:'Gemini + fallback',description:'Google Gen AI .NET SDKとJSON Schemaで親候補と必要な0〜6件の実行可能なサブタスクを構造化します。キー未設定、timeout、API/応答エラーではRuleBasedへ自動フォールバックします。',flow:'raw text + server-side secret → Gemini API → validated OrganizedTask / RuleBased fallback',sources:['src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs']},
-      db:{type:'EF Core / SQL Server',name:'Persistence',description:'親子候補・登録結果・担当者解決結果を含む8テーブル、index、relationship、3 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs','src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs','src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs']},
+      db:{type:'EF Core / SQL Server',name:'Persistence',description:'通常入力とWBSの親子・行別登録結果を含む11テーブル、index、relationship、4 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs','src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs','src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs','src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs']},
       asana:{type:'External Adapter',name:'Asana / Mock',description:'自由文担当者をworkspaceユーザー名へ完全一致または一意な部分一致で解決し、親を作った後に同じ担当者GIDで子を登録します。0件・複数件では未割り当てと警告にします。',flow:'confirmed parent/subtasks → GET workspace users → POST tasks → POST tasks/{gid}/subtasks → actual assignee / warning / safe results',sources:['src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/ApiAsanaTaskServiceTests.cs']},
-      audit:{type:'Data Model',name:'History & Audit',description:'入力、親子候補、親子登録試行、担当者解決status/GID/name/警告、設定meta、イベントとcorrelation IDをUTCで保存します。',flow:'workflow events → 8 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs']}
+      audit:{type:'Data Model',name:'History & Audit',description:'入力、親子候補、WBS profile/batch/row、登録試行、担当者解決status/GID/name/警告、イベントをUTCで保存します。',flow:'workflow events → 11 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Services/WbsImportService.cs']}
     };
     const description=document.getElementById('detail-description'),flow=document.getElementById('detail-flow'),sources=document.getElementById('detail-sources'),name=document.getElementById('detail-name'),type=document.getElementById('detail-type');
     function selectNode(id){const item=details[id];if(!item)return;document.querySelectorAll('.node').forEach(n=>n.classList.toggle('active',n.dataset.node===id));name.textContent=item.name;type.textContent=item.type;description.textContent=item.description;flow.textContent=item.flow;sources.replaceChildren(...item.sources.map(path=>{const li=document.createElement('li');li.textContent=path;return li}))}

@@ -20,6 +20,14 @@ public sealed record AsanaRegistrationResult(
     string? ResolvedAssigneeName = null,
     string? WarningMessage = null);
 
+public sealed record AsanaImportTask(
+    string Title,
+    string Description,
+    string? Assignee,
+    DateOnly? DueDate,
+    string? ProjectGid,
+    string? SectionGid);
+
 public interface IAsanaTaskService
 {
     Task<AsanaRegistrationResult> CreateTaskAsync(TaskCandidate candidate, CancellationToken cancellationToken);
@@ -28,6 +36,10 @@ public interface IAsanaTaskService
         TaskCandidateSubtask subtask,
         string parentTaskGid,
         string? resolvedAssigneeGid,
+        CancellationToken cancellationToken);
+    Task<AsanaRegistrationResult> CreateImportTaskAsync(
+        AsanaImportTask task,
+        string? parentTaskGid,
         CancellationToken cancellationToken);
 }
 
@@ -57,6 +69,23 @@ public sealed class MockAsanaTaskService : IAsanaTaskService
         cancellationToken.ThrowIfCancellationRequested();
         var gid = $"mock-{Guid.NewGuid():N}";
         return Task.FromResult(new AsanaRegistrationResult(true, "Mock", gid, null));
+    }
+
+    public Task<AsanaRegistrationResult> CreateImportTaskAsync(
+        AsanaImportTask task,
+        string? parentTaskGid,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var gid = $"mock-{Guid.NewGuid():N}";
+        var assigneeStatus = string.IsNullOrWhiteSpace(task.Assignee) ? "NotRequested" : "Mock";
+        return Task.FromResult(new AsanaRegistrationResult(
+            true,
+            "Mock",
+            gid,
+            null,
+            AssigneeResolutionStatus: assigneeStatus,
+            ResolvedAssigneeName: NullIfWhiteSpace(task.Assignee)));
     }
 
     private static string? NullIfWhiteSpace(string? value) =>
@@ -159,6 +188,61 @@ public sealed class ApiAsanaTaskService(HttpClient httpClient, IOptions<AsanaOpt
             data,
             AssigneeResolution.NotRequested,
             "Asana rejected a subtask registration. Check server logs and integration settings.",
+            cancellationToken);
+    }
+
+    public async Task<AsanaRegistrationResult> CreateImportTaskAsync(
+        AsanaImportTask task,
+        string? parentTaskGid,
+        CancellationToken cancellationToken)
+    {
+        EnsureConfigured();
+        var assignee = await ResolveAssigneeAsync(task.Assignee, cancellationToken);
+        var data = new Dictionary<string, object?>
+        {
+            ["name"] = task.Title,
+            ["notes"] = task.Description,
+            ["due_on"] = task.DueDate?.ToString("yyyy-MM-dd")
+        };
+        if (assignee.Gid is not null)
+        {
+            data["assignee"] = assignee.Gid;
+        }
+
+        string requestUri;
+        if (string.IsNullOrWhiteSpace(parentTaskGid))
+        {
+            var projectGid = NullIfWhiteSpace(task.ProjectGid) ?? NullIfWhiteSpace(_options.DefaultProjectGid);
+            if (projectGid is null && string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid))
+            {
+                throw new InvalidOperationException(
+                    "Asana API mode requires an import/default project GID or DefaultWorkspaceGid.");
+            }
+            if (task.SectionGid is not null && projectGid is not null)
+            {
+                data["memberships"] = new[] { new { project = projectGid, section = task.SectionGid } };
+            }
+            else if (projectGid is not null)
+            {
+                data["projects"] = new[] { projectGid };
+            }
+            else
+            {
+                data["workspace"] = _options.DefaultWorkspaceGid;
+            }
+            requestUri = $"tasks?opt_fields={TaskResponseFields}";
+        }
+        else
+        {
+            requestUri =
+                $"tasks/{Uri.EscapeDataString(parentTaskGid.Trim())}/subtasks?opt_fields={TaskResponseFields}";
+        }
+
+        return await SendCreateAsync(
+            requestUri,
+            data,
+            assignee,
+            "Asana rejected a WBS task registration. Check server logs and integration settings.",
             cancellationToken);
     }
 
