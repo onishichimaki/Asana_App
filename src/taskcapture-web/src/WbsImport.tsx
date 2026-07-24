@@ -461,6 +461,7 @@ export default function WbsImport() {
   const [busy, setBusy] = useState<'file' | 'profile' | 'preview' | 'register' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [detectionMessage, setDetectionMessage] = useState<string | null>(null)
+  const [showReadingDetails, setShowReadingDetails] = useState(false)
   const [confirmingRegistration, setConfirmingRegistration] = useState(false)
   const [destinationLabel, setDestinationLabel] = useState<{
     projectName: string | null
@@ -476,6 +477,10 @@ export default function WbsImport() {
     const columnCount = Math.max(header.length, ...sample.map(row => row.length), 0)
     return Array.from({ length: columnCount }, (_, index) => cellText(header[index]) || `見出しなし ${columnLetter(index)}`)
   }, [selectedSheet, headerRow, dataStartRow])
+  const sourceRowCount = useMemo(() => (selectedSheet?.rows ?? [])
+    .slice(dataStartRow - 1, dataStartRow - 1 + maxRows)
+    .filter(row => row.some(cell => Boolean(cellText(cell))))
+    .length, [dataStartRow, selectedSheet])
 
   useEffect(() => {
     requestJson<Profile[]>('/api/wbs-imports/profiles').then(setProfiles).catch(() => setProfiles([]))
@@ -498,8 +503,7 @@ export default function WbsImport() {
           setSelectedProfileId('')
           const inferred = inferRoles(headers)
           setMapping(inferred)
-          const count = Object.values(inferred.roles).filter(role => role !== 'ignore').length
-          setDetectionMessage(`見出し${headerRow}行目を判定し、${count}項目をおすすめ設定しました。`)
+          setDetectionMessage(`見出し${headerRow}行目を見つけ、登録に必要な項目を自動設定しました。`)
           setPreviewRows(null)
           setBatch(null)
         }
@@ -526,12 +530,12 @@ export default function WbsImport() {
       { length: columnCount },
       (_, index) => cellText(headerCells[index]) || `見出しなし ${columnLetter(index)}`)
     const inferred = inferRoles(detectedHeaders)
-    const count = Object.values(inferred.roles).filter(role => role !== 'ignore').length
     setHeaderRow(detectedHeaderRow)
     setDataStartRow(nextDataStartRow)
     setMapping(inferred)
     setSelectedProfileId('')
-    setDetectionMessage(`見出し${detectedHeaderRow}行目を判定し、${count}項目をおすすめ設定しました。`)
+    setDetectionMessage(`見出し${detectedHeaderRow}行目を見つけ、登録に必要な項目を自動設定しました。`)
+    setShowReadingDetails(false)
     resetAfterMapping()
   }
 
@@ -551,6 +555,7 @@ export default function WbsImport() {
     setProjectGid(profile.projectGid ?? '')
     setSectionGid(profile.sectionGid ?? '')
     setDetectionMessage(`保存済みテンプレート「${profile.name}」を自動適用しました。`)
+    setShowReadingDetails(false)
     setPreviewRows(null)
     setBatch(null)
   }
@@ -600,6 +605,7 @@ export default function WbsImport() {
       setProfileName('')
       setPreviewRows(null)
       setBatch(null)
+      setShowReadingDetails(false)
       setConfirmingRegistration(false)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'WBSファイルを読み込めませんでした。')
@@ -781,85 +787,75 @@ export default function WbsImport() {
     if (mapping.hierarchyMode === 'columns' && !roles.includes('hierarchy')) errors.push('階層列を1つ以上指定してください。')
     return errors
   }, [mapping])
-  const mappedFields = useMemo(() => roleOptions
-    .filter(option => option.value !== 'ignore' && Object.values(mapping.roles).includes(option.value))
-    .map(option => option.label), [mapping.roles])
+  const mappedFields = useMemo(() => {
+    const roles = new Set(Object.values(mapping.roles))
+    const fields = [
+      roles.has('title') ? 'タスク名' : null,
+      roles.has('description') ? '説明' : null,
+      roles.has('assignee') ? '担当者' : null,
+      roles.has('startDate') ? '開始日' : null,
+      roles.has('dueDate') ? '期限' : null,
+      roles.has('include') ? '登録する行' : null,
+      mapping.hierarchyMode !== 'none' ? '親子関係' : null,
+    ]
+    return fields.filter((field): field is string => Boolean(field))
+  }, [mapping.hierarchyMode, mapping.roles])
+  useEffect(() => {
+    if (mappingErrors.length > 0) setShowReadingDetails(true)
+  }, [mappingErrors.length])
 
   const visibleRows: Array<DraftRow | BatchRow> = batch ? batch.rows : previewRows ?? []
   const includedCount = visibleRows.filter(row => row.included).length
   const errorCount = visibleRows.filter(row => row.included &&
     (row.validationErrors.length > 0 || (isBatchRow(row) && ['Invalid', 'Failed', 'Blocked'].includes(row.status)))).length
+  const currentStep = !file ? 1 : previewRows ? 3 : 2
+  const completed = batch?.status === 'Registered'
+  const stepClass = (step: number) =>
+    completed || step < currentStep ? 'complete' : step === currentStep ? 'active' : ''
 
   return (
     <div className="wbs-page">
+      <ol className="wbs-steps" aria-label="WBS登録の流れ">
+        <li className={stepClass(1)} aria-current={currentStep === 1 ? 'step' : undefined}><span>1</span><strong>ファイルを選ぶ</strong></li>
+        <li className={stepClass(2)} aria-current={currentStep === 2 ? 'step' : undefined}><span>2</span><strong>読み取りを確認</strong></li>
+        <li className={stepClass(3)} aria-current={currentStep === 3 ? 'step' : undefined}><span>3</span><strong>Asanaへ登録</strong></li>
+      </ol>
+
       <section className="panel wbs-file-panel">
-        <div className="section-heading"><h2>1. WBSファイル</h2><span className="ready-badge">端末内で解析</span></div>
+        <div className="section-heading"><h2>WBSファイルを選ぶ</h2><span className="ready-badge">Excel / CSV</span></div>
+        {!file && <p className="wbs-start-guide">ファイルを選ぶだけで、タスク名や担当者、日付、親子関係を自動で読み取ります。</p>}
         <button type="button" className="wbs-dropzone" onClick={() => fileInputRef.current?.click()} disabled={busy !== null}>
-          <strong>{busy === 'file' ? '読み込んでいます…' : file?.name ?? 'ExcelまたはCSVを選択'}</strong>
-          <span>.xlsx / .csv・10MB・5,000行まで</span>
+          <span className="wbs-file-icon" aria-hidden="true">{file ? '✓' : '＋'}</span>
+          <strong>{busy === 'file' ? '読み込んでいます…' : file?.name ?? 'ExcelまたはCSVを選ぶ'}</strong>
+          <span>{file ? 'クリックして別のファイルに変更' : 'ファイルは端末内で読み取ります'}</span>
         </button>
         <input ref={fileInputRef} hidden type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" onChange={event => { const selected = event.target.files?.[0]; event.target.value = ''; if (selected) void importFile(selected) }} />
-        {file && <div className="wbs-file-meta"><span>{sheets.length}シート</span><span>ファイル識別: {fileHash.slice(0, 10)}</span></div>}
+        {file && <div className="wbs-file-meta"><span>{sheets.length}シートを読み込みました</span></div>}
       </section>
 
       {selectedSheet && <section className="panel wbs-mapping-panel">
-        <div className="section-heading"><h2>2. レイアウトと列を指定</h2><span className="source-badge">{headers.length}列</span></div>
-        <p className="wbs-help">元の列を、登録したいAsana項目へ結び付けます。まず自動設定を確認し、違う箇所だけ選び直してください。</p>
-        <div className="wbs-layout-grid">
-          <label>シート<select value={sheetName} onChange={event => selectSheet(event.target.value)}>{sheets.map(sheet => <option key={sheet.name}>{sheet.name}</option>)}</select></label>
-          <label>見出し行<input type="number" min={1} max={selectedSheet.rows.length} value={headerRow} onChange={event => { const value = Number(event.target.value); setHeaderRow(value); setDataStartRow(Math.max(value + 1, dataStartRow)); resetAfterMapping() }} /></label>
-          <label>データ開始行<input type="number" min={headerRow + 1} max={selectedSheet.rows.length + 1} value={dataStartRow} onChange={event => { setDataStartRow(Number(event.target.value)); resetAfterMapping() }} /></label>
-          <label>階層方式<select value={mapping.hierarchyMode} onChange={event => { setMapping(current => ({ ...current, hierarchyMode: event.target.value as HierarchyMode })); resetAfterMapping() }}>
-            <option value="none">親子関係なし</option>
-            <option value="parentKey">識別キー・親キー</option>
-            <option value="level">階層レベル</option>
-            <option value="columns">大項目・中項目などの階層列</option>
-          </select></label>
-        </div>
+        <div className="section-heading"><h2>読み取り結果を確認</h2><span className="source-badge">{sourceRowCount}行</span></div>
+        <p className="wbs-help">自動で読み取りました。下の内容と登録先に問題がなければ、そのまま次へ進めます。</p>
 
-        <div className="wbs-auto-map">
+        {sheets.length > 1 && <div className="wbs-sheet-choice">
+          <label>使うシート<select value={sheetName} onChange={event => selectSheet(event.target.value)}>{sheets.map(sheet => <option key={sheet.name}>{sheet.name}</option>)}</select></label>
+        </div>}
+
+        <div className={`wbs-reading-summary ${mappingErrors.length ? 'needs-attention' : ''}`}>
+          <span className="wbs-reading-icon" aria-hidden="true">{mappingErrors.length ? '!' : '✓'}</span>
           <div>
-            <strong>{detectionMessage ?? '列名からおすすめ設定を作れます。'}</strong>
-            <span>{mappedFields.length > 0 ? `現在の割り当て: ${mappedFields.join('・')}` : 'タイトルなどの登録項目を選んでください。'}</span>
-          </div>
-          <button type="button" onClick={() => applyRecommended(selectedSheet)} disabled={busy !== null}>見出しと列を自動設定</button>
-        </div>
-
-        <div className="wbs-template-row">
-          <select aria-label="保存済みテンプレート" value={selectedProfileId} onChange={event => {
-            const profile = profiles.find(item => item.id === event.target.value)
-            if (profile) applyProfile(profile)
-            else setSelectedProfileId('')
-          }}>
-            <option value="">テンプレートを選択</option>
-            {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}{profile.layoutSignature === layoutSignature ? '（一致）' : ''}</option>)}
-          </select>
-          <input aria-label="テンプレート名" value={profileName} maxLength={200} placeholder="例：A社WBS・親ID形式" onChange={event => setProfileName(event.target.value)} />
-          <button type="button" onClick={() => void saveProfile(false)} disabled={busy !== null || mappingErrors.length > 0}>新規保存</button>
-          {selectedProfileId && <button type="button" onClick={() => void saveProfile(true)} disabled={busy !== null || mappingErrors.length > 0}>上書き</button>}
-          {selectedProfileId && <button type="button" className="danger-link" onClick={() => void deleteProfile()} disabled={busy !== null}>削除</button>}
-        </div>
-
-        <div className="wbs-column-map" role="table" aria-label="列マッピング">
-          <div className="wbs-map-head" role="row"><span>元の列</span><span>サンプル</span><span>Asana項目</span></div>
-          {headers.map((header, index) => {
-            const assignedRole = mapping.roles[index] ?? 'ignore'
-            return <div className={`wbs-map-row ${assignedRole !== 'ignore' ? 'mapped' : ''}`} role="row" key={`${index}-${header}`}>
-            <strong>{columnLetter(index)}: {header}</strong>
-            <span title={cellText(selectedSheet.rows[dataStartRow - 1]?.[index])}>{cellText(selectedSheet.rows[dataStartRow - 1]?.[index]) || '—'}</span>
-            <div className="wbs-role-cell">
-              <select aria-label={`${header}の割り当て`} value={assignedRole} onChange={event => updateRole(index, event.target.value as ColumnRole)}>
-                {roleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <small>{roleHelp[assignedRole]}</small>
+            <strong>{mappingErrors.length ? '確認が必要な項目があります' : `${sourceRowCount}行を登録用に読み取りました`}</strong>
+            <p>{detectionMessage ?? 'ファイルの項目名から自動判定しました。'}</p>
+            <div className="wbs-field-chips" aria-label="読み取った項目">
+              {mappedFields.map(field => <span key={field}>✓ {field}</span>)}
             </div>
-          </div>})}
+          </div>
         </div>
 
         <div className="wbs-destination-card">
           <div>
-            <strong>登録先</strong>
-            <span>プロジェクトとセクションを名前で選べます。この設定はテンプレートにも保存されます。</span>
+            <strong>Asanaの登録先</strong>
+            <span>通常は表示されている既定のプロジェクトのままで進めます。</span>
           </div>
           <AsanaDestinationPicker
             idPrefix="wbs"
@@ -875,32 +871,88 @@ export default function WbsImport() {
           />
         </div>
 
-        <details className="advanced wbs-advanced"><summary>文字・日付の変換設定</summary><div className="advanced-grid">
-          <div className="field"><label>タイトル結合文字</label><input maxLength={20} value={mapping.titleSeparator} onChange={event => { setMapping(current => ({ ...current, titleSeparator: event.target.value })); resetAfterMapping() }} /></div>
-          <div className="field"><label>説明結合文字</label><select value={mapping.descriptionSeparator} onChange={event => { setMapping(current => ({ ...current, descriptionSeparator: event.target.value })); resetAfterMapping() }}><option value={'\n'}>改行</option><option value=" ">空白</option><option value=" / "> / </option></select></div>
-          <div className="field"><label>日付形式</label><select value={mapping.dateFormat} onChange={event => { setMapping(current => ({ ...current, dateFormat: event.target.value as Mapping['dateFormat'] })); resetAfterMapping() }}><option value="auto">自動</option><option value="yyyy-MM-dd">yyyy-MM-dd</option><option value="yyyy/MM/dd">yyyy/MM/dd</option><option value="yyyy.MM.dd">yyyy.MM.dd</option><option value="MM/dd/yyyy">MM/dd/yyyy</option></select></div>
-        </div></details>
-
         {mappingErrors.length > 0 && <div className="wbs-inline-errors">{mappingErrors.map(error => <span key={error}>! {error}</span>)}</div>}
-        <button type="button" className="primary-button" onClick={buildPreview} disabled={busy !== null || mappingErrors.length > 0}>変換プレビューを作る</button>
+
+        <details className="wbs-reading-details" open={showReadingDetails} onToggle={event => setShowReadingDetails(event.currentTarget.open)}>
+          <summary>読み取り方を確認・修正 <small>通常は変更不要です</small></summary>
+          <div className="wbs-detail-content">
+            <div className="wbs-layout-grid">
+              <label>項目名が書かれた行<input type="number" min={1} max={selectedSheet.rows.length} value={headerRow} onChange={event => { const value = Number(event.target.value); setHeaderRow(value); setDataStartRow(Math.max(value + 1, dataStartRow)); resetAfterMapping() }} /><small>例：タスク名、担当者、期限が並ぶ行</small></label>
+              <label>最初のタスク行<input type="number" min={headerRow + 1} max={selectedSheet.rows.length + 1} value={dataStartRow} onChange={event => { setDataStartRow(Number(event.target.value)); resetAfterMapping() }} /><small>項目名の次の行が一般的です</small></label>
+              <label>親子関係の読み方<select value={mapping.hierarchyMode} onChange={event => { setMapping(current => ({ ...current, hierarchyMode: event.target.value as HierarchyMode })); resetAfterMapping() }}>
+                <option value="none">親子関係を作らない</option>
+                <option value="parentKey">WBS番号と親WBS番号を使う</option>
+                <option value="level">階層レベル列を使う</option>
+                <option value="columns">大項目・中項目の列を使う</option>
+              </select><small>分からなければ自動設定のままで進めます</small></label>
+              <button type="button" className="wbs-retry-detection" onClick={() => applyRecommended(selectedSheet)} disabled={busy !== null}>もう一度自動で読み取る</button>
+            </div>
+
+            <div className="wbs-column-map" role="table" aria-label="列の読み取り設定">
+              <div className="wbs-map-head" role="row"><span>Excelの列</span><span>最初のデータ</span><span>Asanaでの使い方</span></div>
+              {headers.map((header, index) => {
+                const assignedRole = mapping.roles[index] ?? 'ignore'
+                return <div className={`wbs-map-row ${assignedRole !== 'ignore' ? 'mapped' : ''}`} role="row" key={`${index}-${header}`}>
+                  <strong>{columnLetter(index)}: {header}</strong>
+                  <span title={cellText(selectedSheet.rows[dataStartRow - 1]?.[index])}>{cellText(selectedSheet.rows[dataStartRow - 1]?.[index]) || '—'}</span>
+                  <div className="wbs-role-cell">
+                    <select aria-label={`${header}の割り当て`} value={assignedRole} onChange={event => updateRole(index, event.target.value as ColumnRole)}>
+                      {roleOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    <small>{roleHelp[assignedRole]}</small>
+                  </div>
+                </div>
+              })}
+            </div>
+
+            <details className="advanced wbs-advanced"><summary>文字と日付の細かい設定</summary><div className="advanced-grid">
+              <div className="field"><label>タイトル結合文字</label><input maxLength={20} value={mapping.titleSeparator} onChange={event => { setMapping(current => ({ ...current, titleSeparator: event.target.value })); resetAfterMapping() }} /></div>
+              <div className="field"><label>説明結合文字</label><select value={mapping.descriptionSeparator} onChange={event => { setMapping(current => ({ ...current, descriptionSeparator: event.target.value })); resetAfterMapping() }}><option value={'\n'}>改行</option><option value=" ">空白</option><option value=" / "> / </option></select></div>
+              <div className="field"><label>日付形式</label><select value={mapping.dateFormat} onChange={event => { setMapping(current => ({ ...current, dateFormat: event.target.value as Mapping['dateFormat'] })); resetAfterMapping() }}><option value="auto">自動</option><option value="yyyy-MM-dd">yyyy-MM-dd</option><option value="yyyy/MM/dd">yyyy/MM/dd</option><option value="yyyy.MM.dd">yyyy.MM.dd</option><option value="MM/dd/yyyy">MM/dd/yyyy</option></select></div>
+            </div></details>
+          </div>
+        </details>
+
+        <details className="wbs-profile-details">
+          <summary>この読み取り設定を次回も使う <small>任意</small></summary>
+          <div className="wbs-template-row">
+            <select aria-label="保存済みテンプレート" value={selectedProfileId} onChange={event => {
+              const profile = profiles.find(item => item.id === event.target.value)
+              if (profile) applyProfile(profile)
+              else setSelectedProfileId('')
+            }}>
+              <option value="">保存済み設定を選ぶ</option>
+              {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}{profile.layoutSignature === layoutSignature ? '（このファイルに一致）' : ''}</option>)}
+            </select>
+            <input aria-label="テンプレート名" value={profileName} maxLength={200} placeholder="保存名（例：給食WBS）" onChange={event => setProfileName(event.target.value)} />
+            <button type="button" onClick={() => void saveProfile(false)} disabled={busy !== null || mappingErrors.length > 0}>新しく保存</button>
+            {selectedProfileId && <button type="button" onClick={() => void saveProfile(true)} disabled={busy !== null || mappingErrors.length > 0}>上書き</button>}
+            {selectedProfileId && <button type="button" className="danger-link" onClick={() => void deleteProfile()} disabled={busy !== null}>削除</button>}
+          </div>
+        </details>
+
+        <button type="button" className="primary-button wbs-next-button" onClick={buildPreview} disabled={busy !== null || mappingErrors.length > 0}>
+          <span>登録する内容を確認する</span><span aria-hidden="true">→</span>
+        </button>
       </section>}
 
       {previewRows && <section className="panel wbs-preview-panel">
-        <div className="section-heading"><h2>3. 登録前プレビュー</h2><span className="ready-badge">{includedCount}件</span></div>
-        <p className="wbs-help">親子構造、タイトル、担当者、開始日、期限を確認してください。エラー行は修正するか、登録対象から外せます。</p>
+        {!batch && <button type="button" className="wbs-back-button" onClick={resetAfterMapping}>← 読み取り結果に戻る</button>}
+        <div className="section-heading"><h2>Asanaへ登録する内容</h2><span className="ready-badge">{includedCount}件</span></div>
+        <p className="wbs-help">内容を確認し、直したい項目があればこの画面で編集できます。</p>
         <div className="wbs-summary"><span>全{visibleRows.length}件</span><span>登録対象{includedCount}件</span><span className={errorCount ? 'has-error' : ''}>エラー{errorCount}件</span></div>
         <div className="wbs-preview-table">
           <div className="wbs-preview-head"><span>対象</span><span>タスク</span><span>担当者</span><span>開始日</span><span>期限</span><span>状態</span></div>
           {visibleRows.slice(0, 200).map((row, index) => <div className={`wbs-preview-row ${row.included ? '' : 'excluded'}`} key={`${row.sourceKey}-${index}`}>
             <input type="checkbox" aria-label={`${row.title || row.sourceKey}を登録対象にする`} checked={row.included} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { included: event.target.checked })} />
             <div className="wbs-task-cell" style={{ paddingLeft: `${Math.min(row.depth, 8) * 16}px` }}>
-              <input value={row.title} maxLength={200} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { title: event.target.value, validationErrors: row.validationErrors.filter(error => error !== 'タスクタイトルがありません。') })} />
+              <input aria-label={`${row.sourceKey}のタスク名`} value={row.title} maxLength={200} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { title: event.target.value, validationErrors: row.validationErrors.filter(error => error !== 'タスクタイトルがありません。') })} />
               <small>行{row.sourceRowNumber}・{row.sourceKey}</small>
             </div>
-            <input value={row.assignee ?? ''} maxLength={200} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { assignee: event.target.value || null })} />
-            <input aria-label={`${row.title || row.sourceKey}の開始日`} type="date" value={row.startDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewDate(index, 'startDate', event.target.value || null)} />
-            <input aria-label={`${row.title || row.sourceKey}の期限`} type="date" value={row.dueDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewDate(index, 'dueDate', event.target.value || null)} />
-            <div className="wbs-row-status">
+            <div className="wbs-preview-field" data-label="担当者"><input aria-label={`${row.title || row.sourceKey}の担当者`} value={row.assignee ?? ''} maxLength={200} disabled={Boolean(batch)} onChange={event => updatePreviewRow(index, { assignee: event.target.value || null })} /></div>
+            <div className="wbs-preview-field" data-label="開始日"><input aria-label={`${row.title || row.sourceKey}の開始日`} type="date" value={row.startDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewDate(index, 'startDate', event.target.value || null)} /></div>
+            <div className="wbs-preview-field" data-label="期限"><input aria-label={`${row.title || row.sourceKey}の期限`} type="date" value={row.dueDate ?? ''} disabled={Boolean(batch)} onChange={event => updatePreviewDate(index, 'dueDate', event.target.value || null)} /></div>
+            <div className="wbs-row-status" data-label="確認">
               {isBatchRow(row) ? <span className={`status-pill ${row.status.toLowerCase()}`}>{statusLabel(row.status)}</span> : <span className={`status-pill ${row.validationErrors.length ? 'invalid' : 'ready'}`}>{row.validationErrors.length ? '要修正' : '登録可能'}</span>}
               {row.validationErrors.map(error => <small className="row-error" key={error}>{error}</small>)}
               {isBatchRow(row) && row.resolvedAssigneeName && <small>担当: {row.resolvedAssigneeName}</small>}

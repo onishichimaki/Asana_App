@@ -15,7 +15,7 @@
       "id": "wbs_import_ui",
       "name": "WBS Import UI",
       "type": "React batch-import surface",
-      "responsibility": "XLSX/CSVをブラウザー内で解析し、見出し行・列を自動推測したうえで利用者が4階層方式、開始日、登録対象、Asana登録先を確認する。複数profile、編集可能preview、最終確認、登録・再試行・エラーCSVを調停する。",
+      "responsibility": "「ファイルを選ぶ、読み取りを確認、Asanaへ登録」の3ステップでXLSX/CSVをブラウザー内解析する。見出し行・列・親子関係を自動推測し、通常は件数・平易な項目名・登録先だけを表示する。専門設定は段階表示し、PC表／スマホカードの編集preview、複数profile、最終確認、登録・再試行・エラーCSVを調停する。",
       "main_inputs": ["XLSX/CSV file", "inferred or selected column roles", "hierarchy mode", "profile selection", "Asana project/section", "preview edits"],
       "main_outputs": ["layout signature", "profile request", "normalized rows", "batch registration request"],
       "source_files": ["src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/AsanaDestinationPicker.tsx", "src/taskcapture-web/src/api.ts", "src/taskcapture-web/package.json", "tests/fixtures/wbs-parent-key.csv", "tests/fixtures/wbs-level.csv", "tests/fixtures/wbs-hierarchy-columns.csv"]
@@ -103,7 +103,7 @@
       "id": "wbs_import_screen",
       "name": "WBS一括取込画面",
       "type": "Responsive SPA mode",
-      "description": "ファイル、説明付きマッピングと登録先、開始日を含むpreviewの3段階を表示する。PCでは横幅を活用し、タブレット・スマートフォンでは1列へ応答する。",
+      "description": "ファイル選択、平易な読取サマリーと登録先、開始日を含むpreviewの3ステップを表示する。専門的なマッピングは既定で閉じ、PCでは一覧表、スマートフォンでは1タスク1カードへ切り替える。",
       "source_files": ["src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/AsanaDestinationPicker.tsx", "src/taskcapture-web/src/App.css"]
     }
   ],

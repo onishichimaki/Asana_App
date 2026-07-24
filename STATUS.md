@@ -26,12 +26,14 @@
 - `.xlsx` / UTF-8・Shift_JIS `.csv` のブラウザー内解析、sheet・header行・data開始行の選択
 - 複数列をタイトル・説明・担当者・期限等へ割り当てる自由列マッピングと見出し名からの初期推測
 - 先頭20行からの見出し行自動判定、説明付き列マッピング、割り当て済み列の強調表示と再自動設定
+- WBSの「ファイルを選ぶ → 読み取りを確認 → Asanaへ登録」3ステップ表示、件数・読取項目サマリー、専門設定の段階表示
 - Asana workspaceのproject/section一覧APIと、通常入力・WBSでの名前選択（GID直接入力もフォールバックとして維持）
 - 通常入力・サブタスク・WBSの開始日編集、SQL履歴、Asana `start_on` 送信、期限との前後関係検証
 - WBSの登録対象列（はい/いいえ、○/×、1/0）、開始日列、登録前の件数・登録先確認ダイアログ
 - 親子関係なし、識別キー・親キー、階層レベル、大項目・中項目等の階層列による親子変換
 - 複数の名前付きWBSテンプレート保存・更新・削除、レイアウト署名一致時の自動適用
 - 最大5,000行の編集可能プレビュー、対象外指定、日付・親不足・重複キー・循環参照の事前検証
+- PCの一覧表とスマートフォンの1タスク1カードを切り替えるレスポンシブ確認画面、読取結果へ戻る操作
 - WBS server dry-run、一括登録、行hash重複防止、部分失敗からの再開、エラーCSV
 - EF Core の11テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit / AddWbsImports / AddTaskStartDates SQL Server migration
 - Development/Test の InMemory provider 差し替え
@@ -88,7 +90,9 @@
 - WBS実Asana再送: 同一batchで `AlreadyRegistered=true`、親子の重複作成なし
 - WBS操作性QA: 給食スパイスカレー30行Excelで見出し4行目・13列中9項目を自動判定し、開始日・期限・登録対象・親子キーを正しく割り当て
 - WBS登録先QA: 実Asana APIから「仕事リクエスト」projectを取得し、名前選択、30件・エラー0件preview、登録直前の件数・登録先確認を表示
-- WBSレスポンシブQA: PC幅とiPhone相当390pxでページ全体の横スクロール・console警告なし（preview表内だけは横スクロール可）
+- WBS初見性QA: 30行Excelで通常画面を7つの平易な読取項目へ要約し、「識別キー」「親キー」「階層レベル」「階層列」は詳細設定を開くまで表示されないことを確認
+- WBSレスポンシブQA: PC幅は30件を横スクロールなしの一覧表、iPhone相当390pxは1タスク1カードで表示し、ページ全体・previewとも横スクロールなし、console警告なし
+- WBS戻る操作QA: 確認画面から読取結果へ戻るとstep 2へ復帰し、再度30件・エラー0件の確認画面を生成できることを確認
 
 ## 未完了 / 外部待ち
 
