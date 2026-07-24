@@ -129,6 +129,20 @@
 ## D-019: 可変レイアウトWBS取込はテンプレート付きの独立バッチフローにする
 
 - 日付: 2026-07-24
-- 状態: Phase 2で採用
-- 判断: `.xlsx` / `.csv` はブラウザー内で解析し、利用者がsheet、header行、data開始行、列マッピング、日付形式、「親ID列 / 階層レベル列」のいずれかを指定する。設定はプロジェクト別ImportProfileとして保存する。正規化後の親子関係と検証結果をpreviewし、確認済み行だけをBatch APIへ送る。`ImportBatches` / `ImportRows` と行hashで結果・再試行・重複防止を管理する。
+- 状態: 採用・実装済み
+- 判断: `.xlsx` / `.csv` はブラウザー内で解析し、利用者がsheet、header行、data開始行、列マッピング、日付形式、4種類の階層方式を指定する。設定は複数の `WbsImportProfile` として保存し、レイアウト署名が一致した場合は自動適用する。正規化後の親子関係と検証結果をpreviewし、確認済み行だけをBatch APIへ送る。`WbsImportBatches` / `WbsImportRows` と行hashで結果・再試行・重複防止を管理する。
 - 理由: WBSはプロジェクトごとに列名・開始行・階層表現が異なるため、固定レイアウトやAI推測だけでは誤登録が起きる。利用者指定、再利用テンプレート、dry-run、行単位監査を組み合わせると柔軟性と安全性を両立できる。
+
+## D-020: WBSファイルはクライアント解析、正規化行はサーバー再検証する
+
+- 日付: 2026-07-24
+- 状態: 採用
+- 判断: Excel解析には `read-excel-file` のbrowser buildを使い、CSVはUTF-8/Shift_JISと引用符をブラウザーで処理する。ファイル本体はAPIへ送信せず、最大5,000件の正規化行だけをDataAnnotationsとserviceの親子検証へ通す。サーバーは親不足、循環、重複、親除外、空タイトルを再検証してから履歴を作る。
+- 理由: レイアウト指定の即時previewとファイル非保持を両立しつつ、クライアント検証だけを信用せず不正・壊れた親子構造のAsana送信を防ぐため。
+
+## D-021: WBSテンプレート削除は既存batchを残す
+
+- 日付: 2026-07-24
+- 状態: 採用
+- 判断: `WbsImportProfiles` から `WbsImportBatches` への外部キーはSQL Serverで `NO ACTION` とし、テンプレート削除時はapplication serviceが参照中batchのProfileIdを明示的にnullへしてから削除する。
+- 理由: Usersからprofile/batchへの複数カスケード経路を避け、利用者がテンプレートを削除しても過去の取込監査を保持するため。

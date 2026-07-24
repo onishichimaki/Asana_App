@@ -10,6 +10,8 @@ public sealed class User
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public List<TaskRequest> TaskRequests { get; set; } = [];
     public List<AuditLog> AuditLogs { get; set; } = [];
+    public List<WbsImportProfile> WbsImportProfiles { get; set; } = [];
+    public List<WbsImportBatch> WbsImportBatches { get; set; } = [];
 }
 
 public sealed class TaskRequest
@@ -111,4 +113,80 @@ public sealed class AuditLog
     [MaxLength(2_000)] public string? Detail { get; set; }
     [MaxLength(64)] public string CorrelationId { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class WbsImportProfile
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    [MaxLength(200)] public string Name { get; set; } = string.Empty;
+    [MaxLength(128)] public string LayoutSignature { get; set; } = string.Empty;
+    [MaxLength(200)] public string SheetName { get; set; } = string.Empty;
+    public int HeaderRow { get; set; }
+    public int DataStartRow { get; set; }
+    [MaxLength(20_000)] public string MappingJson { get; set; } = "{}";
+    [MaxLength(64)] public string? ProjectGid { get; set; }
+    [MaxLength(64)] public string? SectionGid { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public List<WbsImportBatch> Batches { get; set; } = [];
+}
+
+public sealed class WbsImportBatch
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public Guid? WbsImportProfileId { get; set; }
+    public WbsImportProfile? WbsImportProfile { get; set; }
+    [MaxLength(260)] public string FileName { get; set; } = string.Empty;
+    [MaxLength(64)] public string FileHash { get; set; } = string.Empty;
+    [MaxLength(200)] public string SheetName { get; set; } = string.Empty;
+    [MaxLength(128)] public string LayoutSignature { get; set; } = string.Empty;
+    [MaxLength(64)] public string? ProjectGid { get; set; }
+    [MaxLength(64)] public string? SectionGid { get; set; }
+    [MaxLength(32)] public string Status { get; set; } = "Preview";
+    public int TotalRows { get; set; }
+    public int ValidRows { get; set; }
+    public int SucceededRows { get; set; }
+    public int FailedRows { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public List<WbsImportRow> Rows { get; set; } = [];
+}
+
+public sealed class WbsImportRow
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid WbsImportBatchId { get; set; }
+    public WbsImportBatch WbsImportBatch { get; set; } = null!;
+    public Guid? ParentRowId { get; set; }
+    public WbsImportRow? ParentRow { get; set; }
+    public List<WbsImportRow> Children { get; set; } = [];
+    public int SourceRowNumber { get; set; }
+    [MaxLength(256)] public string SourceKey { get; set; } = string.Empty;
+    public bool IsGeneratedKey { get; set; }
+    [MaxLength(64)] public string RowHash { get; set; } = string.Empty;
+    [MaxLength(64)] public string ContentHash { get; set; } = string.Empty;
+    public int Depth { get; set; }
+    public int SortOrder { get; set; }
+    public bool Included { get; set; } = true;
+    [MaxLength(200)] public string Title { get; set; } = string.Empty;
+    [MaxLength(10_000)] public string Description { get; set; } = string.Empty;
+    [MaxLength(200)] public string? Assignee { get; set; }
+    public DateOnly? DueDate { get; set; }
+    [MaxLength(32)] public string Status { get; set; } = "Ready";
+    [MaxLength(2_000)] public string ValidationErrorsJson { get; set; } = "[]";
+    [MaxLength(32)] public string? Provider { get; set; }
+    [MaxLength(64)] public string? ExternalTaskGid { get; set; }
+    [MaxLength(500)] public string? ExternalTaskUrl { get; set; }
+    [MaxLength(100)] public string? ErrorCode { get; set; }
+    [MaxLength(1_000)] public string? ErrorMessage { get; set; }
+    [MaxLength(32)] public string? AssigneeResolutionStatus { get; set; }
+    [MaxLength(64)] public string? ResolvedAssigneeGid { get; set; }
+    [MaxLength(200)] public string? ResolvedAssigneeName { get; set; }
+    [MaxLength(500)] public string? WarningMessage { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }

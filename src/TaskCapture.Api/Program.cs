@@ -74,6 +74,7 @@ builder.Services.AddScoped<IAsanaTaskService>(services =>
         : services.GetRequiredService<MockAsanaTaskService>();
 });
 builder.Services.AddScoped<TaskWorkflowService>();
+builder.Services.AddScoped<WbsImportService>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>

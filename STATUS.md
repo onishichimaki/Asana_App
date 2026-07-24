@@ -4,8 +4,8 @@
 
 ## 現在地
 
-- フェーズ: MVP完成、担当者名解決と実Asana親子登録まで確認済み
-- MVP 判定: Gemini/RuleBased、親子候補編集、担当者名解決、SQL Server、Asana API/Mockの主要経路が完成。
+- フェーズ: 可変レイアウトWBS取込を含むMVP完成
+- MVP 判定: 通常入力、Gemini/RuleBased、親子候補編集、可変レイアウトWBS、担当者名解決、SQL Server、Asana API/Mockの主要経路が完成。
 
 ## 完了
 
@@ -23,7 +23,13 @@
 - Asanaが実際に返した担当者GID・表示名・解決状態・警告のSQL監査と完了画面表示
 - 候補未指定時のAsana既定project設定（`DefaultProjectGid`）
 - 親・成功済みサブタスクの二重登録防止と、`PartiallyRegistered` から失敗した子だけを再試行する処理
-- EF Core の8テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit SQL Server migration
+- `.xlsx` / UTF-8・Shift_JIS `.csv` のブラウザー内解析、sheet・header行・data開始行の選択
+- 複数列をタイトル・説明・担当者・期限等へ割り当てる自由列マッピングと見出し名からの初期推測
+- 親子関係なし、識別キー・親キー、階層レベル、大項目・中項目等の階層列による親子変換
+- 複数の名前付きWBSテンプレート保存・更新・削除、レイアウト署名一致時の自動適用
+- 最大5,000行の編集可能プレビュー、対象外指定、日付・親不足・重複キー・循環参照の事前検証
+- WBS server dry-run、一括登録、行hash重複防止、部分失敗からの再開、エラーCSV
+- EF Core の11テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit / AddWbsImports SQL Server migration
 - Development/Test の InMemory provider 差し替え
 - .NET User Secrets によるローカルSQL Server設定と環境変数による配備先差し替え
 - 再実行可能な `scripts/Test-SqlServerIntegration.ps1`
@@ -41,10 +47,10 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 25件成功、失敗0
+- xUnit: 31件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
-- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 3 migration と必須8テーブルを確認
-- 実SQL結合: 親子整理、Mock親子登録、API再起動後の履歴再取得、Users/親子候補/親子登録/設定/監査行を確認（`1|1|1|1|1|2|2|1`）
+- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 4 migration と必須11テーブルを確認
+- 実SQL結合: 親子整理、通常Mock親子登録、WBSテンプレート・親子行・Mock登録、API再起動後の履歴再取得を確認（`1|1|1|1|1|2|2|1|1|1|2`）
 - NuGet / npm dependency vulnerability scan: 既知脆弱性0
 - `dotnet format --verify-no-changes`: 成功
 - Launcher実機smoke: 通常起動で `Task Capture` ウィンドウhandle生成・応答を確認、trayプロセス維持
@@ -70,17 +76,21 @@
 - Launcher実画面QA: 初期操作が1画面内に収まり、標準タイトルバーの最小化「－」と閉じる「×」を確認
 - サブタスクUI QA: launcher相当520px幅とiPhone相当390px幅で4件の編集欄を確認し、横スクロール・console警告なし
 - アーキテクチャ資料: JSON構文、HTML構文、全 `source_files` の存在確認に成功
-- Excel/CSVの可変レイアウトWBS取込: Phase 2の列マッピング、階層方式、テンプレート、preview、冪等な一括登録要件を設計済み
+- WBS UI QA: 親キー・階層レベル・階層列fixtureをそれぞれ4件へ変換し、深度 `0→1→2→1`、エラー0、横スクロール・console警告なしを確認
+- WBS Excel QA: 2 sheetの実 `.xlsx` を読み込み、sheet切替、列自動推測、Excel日付変換、深度 `0→1→2→1` を確認
+- WBSテンプレートQA: 保存後に同一レイアウトを再読込し、列・階層設定の自動適用を確認
+- WBS Mock登録: 親子4件を登録し、全件成功を画面で確認
+- WBS実Asana登録: 親GID `1216841537461362`、子GID `1216857439579470` を作成し、「大西」を両方とも「大西努」へ解決
+- WBS実Asana再送: 同一batchで `AlreadyRegistered=true`、親子の重複作成なし
 
 ## 未完了 / 外部待ち
 
 - Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
 - 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
 - HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視は未設定。
-- Excel/CSVの可変レイアウトWBS一括取込は、Phase 2の要件・設計までで実装未着手。
 
 ## 次に必要な作業
 
-1. Excel/CSV WBS取込のparser、自由列マッピング、テンプレート、preview、一括登録履歴をPhase 2として実装する。
-2. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声を含む短い受入テストを実施する。
-3. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
+1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声・WBSを含む短い受入テストを実施する。
+2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
+3. 運用実績を見て必要になった場合だけ、WBSの開始日・依存関係・custom field対応を追加する。
