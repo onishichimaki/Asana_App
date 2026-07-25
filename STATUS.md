@@ -52,7 +52,7 @@
 - GitHub Actions CI、API/launcher配布ZIPスクリプト、SQL backup/VERIFYONLYスクリプト、ready health
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
 - `docs/architecture.html`、`docs/architecture.json`、`docs/architecture_readme.md`
-- GitHub `onishichimaki/Asana_App` の `main` へ PR #1・#2 をマージし、実連携検証更新を PR #3 で公開
+- GitHub `onishichimaki/Asana_App` の `main` へ PR #1〜#8をマージし、個別アカウント・運用機能をPR #9で公開
 - Asana PATをローカルUser Secretsへ保存し、既定workspace/project GIDを設定
 - 「仕事リクエスト」projectへ実API登録し、SQL履歴と二重登録防止を確認
 
