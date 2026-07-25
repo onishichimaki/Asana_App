@@ -334,7 +334,7 @@ function App({ account, onLogout }: AppProps) {
 
       <nav className="mode-switch" aria-label="登録方法">
         <button type="button" className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>1件ずつ登録</button>
-        <button type="button" className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>Excel・CSVをまとめて登録</button>
+        <button type="button" className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>{isLauncher ? '一括登録' : 'Excel・CSV一括登録'}</button>
         <button type="button" className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
         <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>接続・利用設定</button>
       </nav>

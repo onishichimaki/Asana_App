@@ -49,6 +49,7 @@
 - ランチャー通常起動時の入力画面表示、`--background` tray起動、`--clipboard` 起動
 - Windowsランチャーから1件登録とExcel・CSVまとめ登録を切り替え、まとめ登録時は確認しやすい大きさへ自動拡大
 - launcherの単一起動と、trayから切替可能なWindowsログイン時自動起動
+- launcher起動時の画面右下配置と、初期入力をスクロールなしで完結できる1段メニュー
 - GitHub Actions CI、API/launcher配布ZIPスクリプト、SQL backup/VERIFYONLYスクリプト、ready health
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
 - `docs/architecture.html`、`docs/architecture.json`、`docs/architecture_readme.md`

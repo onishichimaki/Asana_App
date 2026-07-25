@@ -64,7 +64,6 @@ internal sealed class LauncherApplicationContext : ApplicationContext
 
         if (showOnStart)
         {
-            _window.Show();
             ShowCapture(useClipboardOnStart);
         }
     }
