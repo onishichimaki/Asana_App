@@ -18,7 +18,11 @@ public sealed class WbsMappingRequest : IValidatableObject
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         var allowedRoles = new HashSet<string>(
-            ["ignore", "title", "description", "assignee", "startDate", "dueDate", "include", "key", "parentKey", "level", "hierarchy"],
+            [
+                "ignore", "title", "description", "assignee", "startDate", "dueDate", "include",
+                "key", "parentKey", "level", "hierarchy", "progress", "priority",
+                "estimatedHours", "estimatedCost"
+            ],
             StringComparer.Ordinal);
         if (Roles.Count > 500 || Roles.Any(pair => pair.Key is < 0 or > 499 || !allowedRoles.Contains(pair.Value)))
         {
@@ -43,7 +47,25 @@ public sealed class WbsMappingRequest : IValidatableObject
         {
             yield return new ValidationResult("Column hierarchy requires one or more hierarchy columns.", [nameof(Roles)]);
         }
+
+        var allowedExtraFields = new HashSet<string>(
+            ["progress", "priority", "estimatedHours", "estimatedCost"],
+            StringComparer.Ordinal);
+        if (CustomFieldTargets.Count > 4 ||
+            CustomFieldTargets.Any(pair =>
+                !allowedExtraFields.Contains(pair.Key) ||
+                pair.Value.Length is < 1 or > 64 ||
+                !pair.Value.All(char.IsDigit)))
+        {
+            yield return new ValidationResult(
+                "CustomFieldTargets contains an unsupported item or field number.",
+                [nameof(CustomFieldTargets)]);
+        }
     }
+
+    public IReadOnlyDictionary<string, string> CustomFieldTargets { get; init; } =
+        new Dictionary<string, string>();
+    public bool PutUnmatchedExtraFieldsInDescription { get; init; } = true;
 }
 
 public sealed class WbsImportProfileRequest : IValidatableObject
@@ -54,6 +76,7 @@ public sealed class WbsImportProfileRequest : IValidatableObject
     [Range(1, 10_000)] public int HeaderRow { get; init; } = 1;
     [Range(1, 100_000)] public int DataStartRow { get; init; } = 2;
     [Required] public WbsMappingRequest Mapping { get; init; } = new();
+    public IReadOnlyDictionary<int, string> ColumnNames { get; init; } = new Dictionary<int, string>();
     [RegularExpression("^[0-9]{1,64}$")] public string? ProjectGid { get; init; }
     [RegularExpression("^[0-9]{1,64}$")] public string? SectionGid { get; init; }
 
@@ -66,6 +89,13 @@ public sealed class WbsImportProfileRequest : IValidatableObject
         if (SectionGid is not null && ProjectGid is null)
         {
             yield return new ValidationResult("SectionGid requires ProjectGid.", [nameof(SectionGid), nameof(ProjectGid)]);
+        }
+        if (ColumnNames.Count > 500 ||
+            ColumnNames.Any(pair => pair.Key is < 0 or > 499 || pair.Value.Length is < 1 or > 200))
+        {
+            yield return new ValidationResult(
+                "ColumnNames contains an unsupported column index or name.",
+                [nameof(ColumnNames)]);
         }
     }
 }
@@ -96,6 +126,10 @@ public sealed class WbsNormalizedRowRequest
     [StringLength(200)] public string? Assignee { get; init; }
     public DateOnly? StartDate { get; init; }
     public DateOnly? DueDate { get; init; }
+    [StringLength(100)] public string? Progress { get; init; }
+    [StringLength(100)] public string? Priority { get; init; }
+    [Range(0, 1_000_000)] public decimal? EstimatedHours { get; init; }
+    [Range(0, 1_000_000_000)] public decimal? EstimatedCost { get; init; }
     public IReadOnlyList<string> ValidationErrors { get; init; } = [];
 }
 
@@ -108,6 +142,9 @@ public sealed class WbsImportBatchRequest : IValidatableObject
     public Guid? ProfileId { get; init; }
     [RegularExpression("^[0-9]{1,64}$")] public string? ProjectGid { get; init; }
     [RegularExpression("^[0-9]{1,64}$")] public string? SectionGid { get; init; }
+    public IReadOnlyDictionary<string, string> CustomFieldTargets { get; init; } =
+        new Dictionary<string, string>();
+    public bool PutUnmatchedExtraFieldsInDescription { get; init; } = true;
     [Required] public IReadOnlyList<WbsNormalizedRowRequest> Rows { get; init; } = [];
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -125,6 +162,19 @@ public sealed class WbsImportBatchRequest : IValidatableObject
         if (SectionGid is not null && ProjectGid is null)
         {
             yield return new ValidationResult("SectionGid requires ProjectGid.", [nameof(SectionGid), nameof(ProjectGid)]);
+        }
+        var allowedExtraFields = new HashSet<string>(
+            ["progress", "priority", "estimatedHours", "estimatedCost"],
+            StringComparer.Ordinal);
+        if (CustomFieldTargets.Count > 4 ||
+            CustomFieldTargets.Any(pair =>
+                !allowedExtraFields.Contains(pair.Key) ||
+                pair.Value.Length is < 1 or > 64 ||
+                !pair.Value.All(char.IsDigit)))
+        {
+            yield return new ValidationResult(
+                "CustomFieldTargets contains an unsupported item or field number.",
+                [nameof(CustomFieldTargets)]);
         }
         foreach (var row in Rows.Where(row => row.Included))
         {
@@ -144,9 +194,15 @@ public sealed class WbsImportBatchRequest : IValidatableObject
     }
 }
 
+public sealed class WbsRegisterBatchRequest
+{
+    public bool UpdateExistingTasks { get; init; } = true;
+}
+
 public sealed record WbsImportRowResponse(
     Guid Id,
     Guid? ParentRowId,
+    string? ParentSourceKey,
     int SourceRowNumber,
     string SourceKey,
     int Depth,
@@ -157,7 +213,12 @@ public sealed record WbsImportRowResponse(
     string? Assignee,
     DateOnly? StartDate,
     DateOnly? DueDate,
+    string? Progress,
+    string? Priority,
+    decimal? EstimatedHours,
+    decimal? EstimatedCost,
     string Status,
+    string ChangeType,
     IReadOnlyList<string> ValidationErrors,
     string? Provider,
     string? ExternalTaskGid,
@@ -165,14 +226,44 @@ public sealed record WbsImportRowResponse(
     string? ErrorMessage,
     string? AssigneeResolutionStatus,
     string? ResolvedAssigneeName,
-    string? WarningMessage);
+    string? WarningMessage,
+    string? PreviousExternalTaskUrl,
+    bool WasCreatedInBatch,
+    DateTimeOffset? RevertedAtUtc);
 
 public sealed record WbsImportBatchResponse(
     Guid Id,
+    string FileName,
+    string SheetName,
+    string? ProjectGid,
+    string? SectionGid,
     string Status,
     bool AlreadyRegistered,
     int TotalRows,
     int ValidRows,
     int SucceededRows,
     int FailedRows,
+    int NewRows,
+    int ChangedRows,
+    int UnchangedRows,
+    bool CanUndo,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc,
     IReadOnlyList<WbsImportRowResponse> Rows);
+
+public sealed record WbsImportBatchSummaryResponse(
+    Guid Id,
+    string FileName,
+    string SheetName,
+    string Status,
+    int TotalRows,
+    int SucceededRows,
+    int FailedRows,
+    int NewRows,
+    int ChangedRows,
+    int UnchangedRows,
+    bool CanUndo,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc);
+
+public sealed record WbsColumnAliasResponse(string ColumnName, string Role);

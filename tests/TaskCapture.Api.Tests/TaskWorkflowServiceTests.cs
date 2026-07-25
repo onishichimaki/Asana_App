@@ -34,6 +34,7 @@ public sealed class TaskWorkflowServiceTests
         var result = await workflow.RegisterAsync(
             organized.Candidate.Id,
             update,
+            "new-subtasks-test",
             "register-trace",
             CancellationToken.None);
 
@@ -74,16 +75,19 @@ public sealed class TaskWorkflowServiceTests
         var first = await workflow.RegisterAsync(
             organized.Candidate.Id,
             update,
+            "partial-retry-test",
             "first-register-trace",
             CancellationToken.None);
         var second = await workflow.RegisterAsync(
             organized.Candidate.Id,
             update,
+            "partial-retry-test",
             "retry-register-trace",
             CancellationToken.None);
         var third = await workflow.RegisterAsync(
             organized.Candidate.Id,
             update,
+            "partial-retry-test",
             "idempotent-register-trace",
             CancellationToken.None);
 
@@ -149,5 +153,21 @@ public sealed class TaskWorkflowServiceTests
             string? parentTaskGid,
             CancellationToken cancellationToken) =>
             Task.FromResult(new AsanaRegistrationResult(true, "Test", $"import-{task.Title}", null));
+
+        public Task<AsanaRegistrationResult> UpdateImportTaskAsync(
+            AsanaImportTask task,
+            string taskGid,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new AsanaRegistrationResult(true, "Test", taskGid, null));
+
+        public Task<AsanaActionResult> DeleteTaskAsync(
+            string taskGid,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new AsanaActionResult(true, "Test"));
+
+        public Task<IReadOnlyList<AsanaAssigneeResolution>> ResolveAssigneesAsync(
+            IReadOnlyList<string> requestedNames,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<AsanaAssigneeResolution>>([]);
     }
 }

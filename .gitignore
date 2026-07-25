@@ -1,10 +1,16 @@
 **/bin/
 **/obj/
 **/node_modules/
+**/artifacts/
 **/.vs/
 **/.vscode/
 src/TaskCapture.Api/wwwroot/
 src/TaskCapture.Api/taskcapture.db
+dist/
+outputs/
+tmp/
+.next/
+out/
 *.user
 *.suo
 *.cache
@@ -14,4 +20,6 @@ src/TaskCapture.Api/taskcapture.db
 !.env.example
 TestResults/
 coverage/
+.DS_Store
+npm-debug.log*
 src/taskcapture-web/src/assets/

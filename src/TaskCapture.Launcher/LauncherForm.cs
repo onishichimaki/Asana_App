@@ -6,6 +6,8 @@ namespace TaskCapture.Launcher;
 
 internal sealed class LauncherForm : Form
 {
+    private static readonly Size CompactSize = new(520, 620);
+    private static readonly Size ExpandedSize = new(1180, 820);
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly Uri _webUri;
     private bool _initialized;
@@ -22,8 +24,7 @@ internal sealed class LauncherForm : Form
 
         _webUri = uri;
         Text = "Task Capture";
-        Width = 520;
-        Height = 620;
+        Size = CompactSize;
         MinimumSize = new Size(400, 500);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
@@ -31,7 +32,7 @@ internal sealed class LauncherForm : Form
         FormBorderStyle = FormBorderStyle.Sizable;
         ControlBox = true;
         MinimizeBox = true;
-        MaximizeBox = false;
+        MaximizeBox = true;
         ShowIcon = false;
         Controls.Add(_webView);
         FormClosing += OnFormClosing;
@@ -81,11 +82,39 @@ internal sealed class LauncherForm : Form
             {
                 Hide();
             }
+            else if (type == "view-mode")
+            {
+                var mode = document.RootElement.TryGetProperty("mode", out var modeElement)
+                    ? modeElement.GetString()
+                    : null;
+                SetViewMode(mode);
+            }
         }
         catch (JsonException)
         {
             // Ignore messages that are not part of the small launcher bridge contract.
         }
+    }
+
+    private void SetViewMode(string? mode)
+    {
+        if (WindowState != FormWindowState.Normal) return;
+
+        var isWbs = string.Equals(mode, "wbs", StringComparison.OrdinalIgnoreCase);
+        var workingArea = Screen.FromControl(this).WorkingArea;
+        var requested = isWbs ? ExpandedSize : CompactSize;
+        var nextSize = new Size(
+            Math.Min(requested.Width, Math.Max(400, workingArea.Width - 40)),
+            Math.Min(requested.Height, Math.Max(500, workingArea.Height - 40)));
+        var center = new Point(Left + Width / 2, Top + Height / 2);
+
+        MinimumSize = isWbs
+            ? new Size(Math.Min(760, nextSize.Width), Math.Min(600, nextSize.Height))
+            : new Size(400, 500);
+        Size = nextSize;
+        Location = new Point(
+            Math.Clamp(center.X - Width / 2, workingArea.Left, workingArea.Right - Width),
+            Math.Clamp(center.Y - Height / 2, workingArea.Top, workingArea.Bottom - Height));
     }
 
     private void SendClipboardToWeb()

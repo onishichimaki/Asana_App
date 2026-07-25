@@ -27,7 +27,57 @@ public sealed class AsanaOptions
 {
     public const string SectionName = "Integration:Asana";
     public string Mode { get; set; } = "Mock";
+    public string CredentialMode { get; set; } = "PersonalAccessToken";
     public string? PersonalAccessToken { get; set; }
     public string? DefaultWorkspaceGid { get; set; }
     public string? DefaultProjectGid { get; set; }
+    public AsanaOAuthOptions OAuth { get; set; } = new();
+}
+
+public sealed class AsanaOAuthOptions
+{
+    public string? ClientId { get; set; }
+    public string? ClientSecret { get; set; }
+    public string? RedirectUri { get; set; }
+    public string[] Scopes { get; set; } =
+    [
+        "projects:read",
+        "sections:read",
+        "tasks:read",
+        "tasks:write",
+        "tasks:delete",
+        "users:read",
+        "workspaces:read"
+    ];
+}
+
+public sealed class AccessOptions
+{
+    public const string SectionName = "Access";
+    public string Mode { get; set; } = "Development";
+    public string LocalEmail { get; set; } = "local-user@taskcapture.local";
+    public string LocalDisplayName { get; set; } = "ローカル利用者";
+    public string[] AdminEmails { get; set; } = [];
+    public string[] AllowedEmailDomains { get; set; } = [];
+    public EmailCodeOptions EmailCode { get; set; } = new();
+}
+
+public sealed class EmailCodeOptions
+{
+    public int CodeLifetimeMinutes { get; set; } = 10;
+    public int SessionDays { get; set; } = 14;
+    public int MaximumAttempts { get; set; } = 5;
+    public EmailDeliveryOptions Delivery { get; set; } = new();
+}
+
+public sealed class EmailDeliveryOptions
+{
+    public string Mode { get; set; } = "Mock";
+    public string? Host { get; set; }
+    public int Port { get; set; } = 587;
+    public bool EnableSsl { get; set; } = true;
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string? FromAddress { get; set; }
+    public string FromName { get; set; } = "Task Capture";
 }

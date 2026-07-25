@@ -74,13 +74,17 @@ public sealed class TaskWorkflowService(
     public async Task<TaskCandidateResponse> UpdateCandidateAsync(
         Guid candidateId,
         CandidateUpdateRequest input,
+        string clientKey,
         string correlationId,
         CancellationToken cancellationToken)
     {
+        var normalizedClientKey = NormalizeClientKey(clientKey);
         var candidate = await db.TaskCandidates
             .Include(x => x.TaskRequest)
             .Include(x => x.Subtasks)
-            .SingleOrDefaultAsync(x => x.Id == candidateId, cancellationToken)
+            .SingleOrDefaultAsync(
+                x => x.Id == candidateId && x.TaskRequest.User.ClientKey == normalizedClientKey,
+                cancellationToken)
             ?? throw new KeyNotFoundException("Task candidate was not found.");
         ApplyUpdate(candidate, input);
         candidate.TaskRequest.Status = "Edited";
@@ -92,14 +96,18 @@ public sealed class TaskWorkflowService(
     public async Task<RegistrationResponse> RegisterAsync(
         Guid candidateId,
         CandidateUpdateRequest input,
+        string clientKey,
         string correlationId,
         CancellationToken cancellationToken)
     {
+        var normalizedClientKey = NormalizeClientKey(clientKey);
         var candidate = await db.TaskCandidates
             .Include(x => x.TaskRequest)
             .Include(x => x.Registrations)
             .Include(x => x.Subtasks).ThenInclude(x => x.Registrations)
-            .SingleOrDefaultAsync(x => x.Id == candidateId, cancellationToken)
+            .SingleOrDefaultAsync(
+                x => x.Id == candidateId && x.TaskRequest.User.ClientKey == normalizedClientKey,
+                cancellationToken)
             ?? throw new KeyNotFoundException("Task candidate was not found.");
 
         var parentRegistration = candidate.Registrations
@@ -195,13 +203,41 @@ public sealed class TaskWorkflowService(
         return ToResponse(parentRegistration, false, candidate.Subtasks, allSubtasksSucceeded, firstSubtaskError);
     }
 
-    public async Task<IReadOnlyList<RecentTaskResponse>> GetRecentAsync(int take, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RecentTaskResponse>> GetRecentAsync(
+        string clientKey,
+        int take,
+        CancellationToken cancellationToken) =>
+        await GetRecentAsync(clientKey, take, null, null, cancellationToken);
+
+    public async Task<IReadOnlyList<RecentTaskResponse>> GetRecentAsync(
+        string clientKey,
+        int take,
+        string? search,
+        string? status,
+        CancellationToken cancellationToken)
     {
-        var rows = await db.TaskRequests.AsNoTracking()
+        var normalizedClientKey = NormalizeClientKey(clientKey);
+        var query = db.TaskRequests.AsNoTracking()
             .Include(x => x.Candidates).ThenInclude(x => x.Registrations)
             .Include(x => x.Candidates).ThenInclude(x => x.Subtasks).ThenInclude(x => x.Registrations)
+            .Where(x => x.User.ClientKey == normalizedClientKey);
+        var normalizedSearch = NullIfWhiteSpace(search);
+        if (normalizedSearch is not null)
+        {
+            query = query.Where(request =>
+                request.RawText.Contains(normalizedSearch)
+                || request.Candidates.Any(candidate =>
+                    candidate.Title.Contains(normalizedSearch)
+                    || candidate.Description.Contains(normalizedSearch)));
+        }
+        var normalizedStatus = NullIfWhiteSpace(status);
+        if (normalizedStatus is not null)
+        {
+            query = query.Where(request => request.Status == normalizedStatus);
+        }
+        var rows = await query
             .OrderByDescending(x => x.CreatedAtUtc)
-            .Take(Math.Clamp(take, 1, 20))
+            .Take(Math.Clamp(take, 1, 100))
             .ToListAsync(cancellationToken);
 
         return rows.Select(request =>
@@ -223,8 +259,7 @@ public sealed class TaskWorkflowService(
 
     private async Task<User> GetOrCreateUserAsync(string clientKey, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var trimmed = string.IsNullOrWhiteSpace(clientKey) ? "local-device" : clientKey.Trim();
-        var normalized = trimmed[..Math.Min(trimmed.Length, 128)];
+        var normalized = NormalizeClientKey(clientKey);
         var user = await db.Users.SingleOrDefaultAsync(x => x.ClientKey == normalized, cancellationToken);
         if (user is not null) return user;
         user = new User { ClientKey = normalized, DisplayName = "Limited user", CreatedAtUtc = now };
@@ -383,6 +418,11 @@ public sealed class TaskWorkflowService(
         subtask.Registrations.Any(x => x.Succeeded);
 
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string NormalizeClientKey(string? value)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(value) ? "local-device" : value.Trim();
+        return trimmed[..Math.Min(trimmed.Length, 128)];
+    }
     private static string? SafeMessage(string? value) => string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 1_000)];
     private static string? SafeWarning(string? value) => string.IsNullOrWhiteSpace(value) ? null : value[..Math.Min(value.Length, 500)];
 }

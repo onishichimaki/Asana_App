@@ -331,6 +331,65 @@ public sealed class ApiAsanaTaskServiceTests
         Assert.Contains("/projects/1216674009964669/sections?", handler.Requests[0].Uri);
     }
 
+    [Fact]
+    public async Task GetCustomFieldsAsync_ReturnsWritableProjectFields()
+    {
+        var handler = new SequenceHandler(
+            (HttpStatusCode.OK,
+                """
+                {"data":[
+                  {"custom_field":{"gid":"501","name":"優先度","resource_subtype":"enum","is_value_read_only":false,
+                    "enum_options":[{"gid":"511","name":"高","enabled":true}]}},
+                  {"custom_field":{"gid":"502","name":"計算結果","resource_subtype":"number","is_value_read_only":true}}
+                ],"next_page":null}
+                """));
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com/api/1.0/") };
+        var service = new ApiAsanaTaskService(
+            client,
+            Microsoft.Extensions.Options.Options.Create(new AsanaOptions
+            {
+                Mode = "Api",
+                PersonalAccessToken = "test-secret"
+            }));
+
+        var result = await service.GetCustomFieldsAsync("1216674009964669", CancellationToken.None);
+
+        var field = Assert.Single(result);
+        Assert.Equal(("501", "優先度", "enum"), (field.Gid, field.Name, field.Type));
+        Assert.Equal(("511", "高"), (field.Options[0].Gid, field.Options[0].Name));
+        Assert.Contains("/projects/1216674009964669/custom_field_settings?", handler.Requests[0].Uri);
+    }
+
+    [Fact]
+    public async Task UpdateAndDeleteImportTask_UseExistingAsanaTask()
+    {
+        var handler = new SequenceHandler(
+            (HttpStatusCode.OK,
+                """{"data":{"gid":"700","permalink_url":"https://app.asana.com/0/0/700","assignee":null}}"""),
+            (HttpStatusCode.OK, """{"data":{}}"""));
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com/api/1.0/") };
+        var service = new ApiAsanaTaskService(
+            client,
+            Microsoft.Extensions.Options.Options.Create(new AsanaOptions
+            {
+                Mode = "Api",
+                PersonalAccessToken = "test-secret"
+            }));
+
+        var updated = await service.UpdateImportTaskAsync(
+            new AsanaImportTask("変更後", "説明", null, null, null, null, null),
+            "700",
+            CancellationToken.None);
+        var deleted = await service.DeleteTaskAsync("700", CancellationToken.None);
+
+        Assert.True(updated.Succeeded);
+        Assert.True(deleted.Succeeded);
+        Assert.Equal(HttpMethod.Put, handler.Requests[0].Method);
+        Assert.Equal(HttpMethod.Delete, handler.Requests[1].Method);
+        Assert.Contains("/tasks/700", handler.Requests[0].Uri);
+        Assert.Contains("/tasks/700", handler.Requests[1].Uri);
+    }
+
     private sealed record RecordedRequest(HttpMethod Method, string Uri, string? Body);
 
     private sealed class SequenceHandler(

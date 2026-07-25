@@ -22,6 +22,13 @@ internal sealed class LauncherApplicationContext : ApplicationContext
         menu.Items.Add("入力画面を開く", null, (_, _) => ShowCapture(useClipboard: false));
         menu.Items.Add("クリップボードから開く", null, (_, _) => ShowCapture(useClipboard: true));
         menu.Items.Add(new ToolStripSeparator());
+        var startupMenu = new ToolStripMenuItem("Windowsログイン時に起動")
+        {
+            Checked = StartupRegistration.IsEnabled(),
+            CheckOnClick = true
+        };
+        menu.Items.Add(startupMenu);
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => ExitApplication());
 
         _trayIcon = new NotifyIcon
@@ -32,6 +39,20 @@ internal sealed class LauncherApplicationContext : ApplicationContext
             Visible = true
         };
         _trayIcon.DoubleClick += (_, _) => ShowCapture(useClipboard: false);
+        startupMenu.CheckedChanged += (_, _) =>
+        {
+            try
+            {
+                StartupRegistration.SetEnabled(startupMenu.Checked);
+            }
+            catch (Exception ex)
+            {
+                startupMenu.Checked = StartupRegistration.IsEnabled();
+                _trayIcon.BalloonTipTitle = "自動起動を変更できません";
+                _trayIcon.BalloonTipText = ex.Message;
+                _trayIcon.ShowBalloonTip(4_000);
+            }
+        };
 
         _hotKeyWindow = new HotKeyWindow(() => ShowCapture(useClipboard: true));
         if (!RegisterHotKey(_hotKeyWindow.Handle, HotKeyId, ModControl | ModShift, VirtualKeyA))

@@ -7,11 +7,76 @@ public sealed class User
     public Guid Id { get; set; } = Guid.NewGuid();
     [MaxLength(200)] public string DisplayName { get; set; } = "Local user";
     [MaxLength(128)] public string ClientKey { get; set; } = "local-device";
+    [MaxLength(32)] public string IdentityProvider { get; set; } = "Legacy";
+    [MaxLength(200)] public string? SubjectId { get; set; }
+    [MaxLength(320)] public string? Email { get; set; }
+    public bool IsAdmin { get; set; }
+    public bool IsActive { get; set; } = true;
+    public bool RestrictProjects { get; set; }
+    public DateTimeOffset? LastLoginAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public List<TaskRequest> TaskRequests { get; set; } = [];
     public List<AuditLog> AuditLogs { get; set; } = [];
     public List<WbsImportProfile> WbsImportProfiles { get; set; } = [];
     public List<WbsImportBatch> WbsImportBatches { get; set; } = [];
+    public List<WbsColumnAlias> WbsColumnAliases { get; set; } = [];
+    public List<UserSession> Sessions { get; set; } = [];
+    public AsanaConnection? AsanaConnection { get; set; }
+    public List<UserProjectPreference> ProjectPreferences { get; set; } = [];
+}
+
+public sealed class EmailLoginCode
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    [MaxLength(320)] public string Email { get; set; } = string.Empty;
+    [MaxLength(512)] public string CodeHash { get; set; } = string.Empty;
+    [MaxLength(64)] public string RequestFingerprint { get; set; } = string.Empty;
+    public int FailedAttempts { get; set; }
+    public DateTimeOffset ExpiresAtUtc { get; set; }
+    public DateTimeOffset? UsedAtUtc { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class UserSession
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    [MaxLength(64)] public string UserAgentHash { get; set; } = string.Empty;
+    public DateTimeOffset ExpiresAtUtc { get; set; }
+    public DateTimeOffset? RevokedAtUtc { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset LastSeenAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class AsanaConnection
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    [MaxLength(64)] public string AsanaUserGid { get; set; } = string.Empty;
+    [MaxLength(200)] public string AsanaUserName { get; set; } = string.Empty;
+    [MaxLength(64)] public string? WorkspaceGid { get; set; }
+    [MaxLength(200)] public string? WorkspaceName { get; set; }
+    [MaxLength(4_000)] public string ProtectedAccessToken { get; set; } = string.Empty;
+    [MaxLength(4_000)] public string? ProtectedRefreshToken { get; set; }
+    [MaxLength(1_000)] public string GrantedScopes { get; set; } = string.Empty;
+    public DateTimeOffset? TokenExpiresAtUtc { get; set; }
+    public DateTimeOffset ConnectedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? RevokedAtUtc { get; set; }
+}
+
+public sealed class UserProjectPreference
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    [MaxLength(64)] public string ProjectGid { get; set; } = string.Empty;
+    [MaxLength(200)] public string ProjectName { get; set; } = string.Empty;
+    public bool IsFavorite { get; set; }
+    public bool IsAllowed { get; set; } = true;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class TaskRequest
@@ -134,6 +199,18 @@ public sealed class WbsImportProfile
     public List<WbsImportBatch> Batches { get; set; } = [];
 }
 
+public sealed class WbsColumnAlias
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    [MaxLength(200)] public string ColumnName { get; set; } = string.Empty;
+    [MaxLength(200)] public string NormalizedColumnName { get; set; } = string.Empty;
+    [MaxLength(32)] public string Role { get; set; } = "ignore";
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
 public sealed class WbsImportBatch
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -147,6 +224,8 @@ public sealed class WbsImportBatch
     [MaxLength(128)] public string LayoutSignature { get; set; } = string.Empty;
     [MaxLength(64)] public string? ProjectGid { get; set; }
     [MaxLength(64)] public string? SectionGid { get; set; }
+    [MaxLength(2_000)] public string CustomFieldTargetsJson { get; set; } = "{}";
+    public bool PutUnmatchedExtraFieldsInDescription { get; set; } = true;
     [MaxLength(32)] public string Status { get; set; } = "Preview";
     public int TotalRows { get; set; }
     public int ValidRows { get; set; }
@@ -178,7 +257,12 @@ public sealed class WbsImportRow
     [MaxLength(200)] public string? Assignee { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? DueDate { get; set; }
+    [MaxLength(100)] public string? Progress { get; set; }
+    [MaxLength(100)] public string? Priority { get; set; }
+    public decimal? EstimatedHours { get; set; }
+    public decimal? EstimatedCost { get; set; }
     [MaxLength(32)] public string Status { get; set; } = "Ready";
+    [MaxLength(32)] public string ChangeType { get; set; } = "New";
     [MaxLength(2_000)] public string ValidationErrorsJson { get; set; } = "[]";
     [MaxLength(32)] public string? Provider { get; set; }
     [MaxLength(64)] public string? ExternalTaskGid { get; set; }
@@ -189,6 +273,10 @@ public sealed class WbsImportRow
     [MaxLength(64)] public string? ResolvedAssigneeGid { get; set; }
     [MaxLength(200)] public string? ResolvedAssigneeName { get; set; }
     [MaxLength(500)] public string? WarningMessage { get; set; }
+    [MaxLength(64)] public string? PreviousExternalTaskGid { get; set; }
+    [MaxLength(500)] public string? PreviousExternalTaskUrl { get; set; }
+    public bool WasCreatedInBatch { get; set; }
+    public DateTimeOffset? RevertedAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { requestJson } from './api'
+import type { AuthAccount } from './AuthGate'
 import AsanaDestinationPicker from './AsanaDestinationPicker'
+import SettingsPanel from './SettingsPanel'
+import HistoryPanel from './HistoryPanel'
 import WbsImport from './WbsImport'
 import './App.css'
 
@@ -43,7 +46,7 @@ function candidatePayload(candidate: CandidateDraft) {
   let customFields: Record<string, string> = {}
   if (candidate.customFieldsText.trim()) {
     const parsed: unknown = JSON.parse(candidate.customFieldsText)
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('カスタムフィールドは {"GID":"値"} 形式で入力してください。')
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('追加項目は {"項目番号":"値"} の形で入力してください。')
     customFields = Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]))
   }
   return {
@@ -71,8 +74,13 @@ async function readMinutesText(file: File) {
   }
 }
 
-function App() {
-  const [mode, setMode] = useState<'capture' | 'wbs'>('capture')
+type AppProps = {
+  account: AuthAccount
+  onLogout: () => Promise<void>
+}
+
+function App({ account, onLogout }: AppProps) {
+  const [mode, setMode] = useState<'capture' | 'wbs' | 'history' | 'settings'>('capture')
   const [rawText, setRawText] = useState('')
   const [source, setSource] = useState<InputSource>('text')
   const [candidate, setCandidate] = useState<CandidateDraft | null>(null)
@@ -111,6 +119,11 @@ function App() {
     webview.postMessage({ type: 'web-ready' })
     return () => webview.removeEventListener('message', receiveLauncherMessage)
   }, [])
+
+  useEffect(() => {
+    if (!isLauncher) return
+    window.chrome?.webview?.postMessage({ type: 'view-mode', mode })
+  }, [mode])
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
   useEffect(() => () => { if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl) }, [imagePreviewUrl])
@@ -303,18 +316,34 @@ function App() {
   }
 
   return (
-    <main className={`app-shell ${isLauncher ? 'launcher-shell' : ''} ${mode === 'wbs' && !isLauncher ? 'wbs-shell' : ''}`} onKeyDown={handleShortcut}>
+    <main className={`app-shell ${isLauncher ? 'launcher-shell' : ''} ${mode === 'wbs' ? 'wbs-shell' : ''}`} onKeyDown={handleShortcut}>
       <header className="topbar">
         <h1>Asanaへタスク登録</h1>
-        <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
+        <div className="topbar-actions">
+          <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
+          {account.mode === 'EmailCode'
+            ? <button type="button" className="account-button" onClick={() => void onLogout()} title={`${account.email} でログイン中。クリックでログアウト`}>
+                <span aria-hidden="true">{(account.displayName || account.email || '?').slice(0, 1).toUpperCase()}</span>
+                <strong>{account.displayName || account.email}</strong>
+              </button>
+            : <div className="account-button development-account" title={`${account.email}（開発用ログイン）`}>
+                <span aria-hidden="true">開</span><strong>開発用</strong>
+              </div>}
+        </div>
       </header>
 
-      {!isLauncher && <nav className="mode-switch" aria-label="登録方法">
-        <button type="button" className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>すぐ登録</button>
-        <button type="button" className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>WBS一括取込</button>
-      </nav>}
+      <nav className="mode-switch" aria-label="登録方法">
+        <button type="button" className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>1件ずつ登録</button>
+        <button type="button" className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>Excel・CSVをまとめて登録</button>
+        <button type="button" className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
+        <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>接続・利用設定</button>
+      </nav>
 
-      {mode === 'wbs' && !isLauncher
+      {mode === 'settings'
+        ? <SettingsPanel account={account} />
+        : mode === 'history'
+        ? <HistoryPanel />
+        : mode === 'wbs'
         ? <WbsImport />
         : <>
 
@@ -361,7 +390,7 @@ function App() {
         <div className="field full-field"><label htmlFor="candidate-title">タスクタイトル <strong>必須</strong></label><input id="candidate-title" value={candidate.title} maxLength={200} onChange={(event) => setDraftField('title', event.target.value)} /></div>
         <div className="field full-field"><label htmlFor="candidate-description">タスク内容</label><textarea id="candidate-description" value={candidate.description} maxLength={maxInputLength} rows={isLauncher ? 3 : 4} onChange={(event) => setDraftField('description', event.target.value)} /></div>
         <div className="field-grid schedule-grid">
-          <div className="field"><label htmlFor="candidate-assignee">担当者</label><input id="candidate-assignee" value={candidate.assignee ?? ''} maxLength={200} placeholder="名前 / me / Asana GID" onChange={(event) => setDraftField('assignee', event.target.value)} /></div>
+          <div className="field"><label htmlFor="candidate-assignee">担当者</label><input id="candidate-assignee" value={candidate.assignee ?? ''} maxLength={200} placeholder="名前（例：大西）" onChange={(event) => setDraftField('assignee', event.target.value)} /></div>
           <div className="field"><label htmlFor="candidate-start">開始日</label><input id="candidate-start" type="date" value={candidate.startDate ?? ''} onChange={(event) => setDraftField('startDate', event.target.value || null)} /></div>
           <div className="field"><label htmlFor="candidate-due">期限</label><input id="candidate-due" type="date" value={candidate.dueDate ?? ''} onChange={(event) => setDraftField('dueDate', event.target.value || null)} /></div>
         </div>
@@ -381,9 +410,9 @@ function App() {
               }}
             />
           </div>
-          <div className="field"><label htmlFor="tags">タグ GID</label><input id="tags" value={candidate.tagsText} placeholder="123, 456" onChange={(event) => setDraftField('tagsText', event.target.value)} /></div>
+          <div className="field"><label htmlFor="tags">タグ番号</label><input id="tags" value={candidate.tagsText} placeholder="123, 456" onChange={(event) => setDraftField('tagsText', event.target.value)} /></div>
           <div className="field"><label htmlFor="priority">優先度</label><select id="priority" value={candidate.priority ?? ''} onChange={(event) => setDraftField('priority', event.target.value || null)}><option value="">未設定</option><option value="low">低</option><option value="normal">通常</option><option value="high">高</option><option value="urgent">緊急</option></select></div>
-          <div className="field full-field"><label htmlFor="custom-fields">カスタムフィールド</label><textarea id="custom-fields" rows={3} value={candidate.customFieldsText} placeholder={'{"フィールドGID":"値"}'} onChange={(event) => setDraftField('customFieldsText', event.target.value)} /></div>
+          <div className="field full-field"><label htmlFor="custom-fields">追加項目（上級者向け）</label><textarea id="custom-fields" rows={3} value={candidate.customFieldsText} placeholder={'{"項目番号":"値"}'} onChange={(event) => setDraftField('customFieldsText', event.target.value)} /></div>
         </div></details>
         <button type="button" className="asana-button" onClick={register} disabled={busy !== null || Boolean(registration)}>{busy === 'register' ? <span className="spinner" aria-hidden="true" /> : <span className="check" aria-hidden="true">✓</span>}{busy === 'register' ? '登録しています…' : registration ? '登録済み' : 'この内容でAsanaへ登録'}</button>
       </section>}

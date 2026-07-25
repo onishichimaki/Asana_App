@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 
 namespace TaskCapture.Api.Infrastructure;
 
@@ -12,6 +13,9 @@ public sealed class ApiExceptionHandler(
         var (status, title) = exception switch
         {
             KeyNotFoundException => (StatusCodes.Status404NotFound, "Resource not found"),
+            ValidationException => (StatusCodes.Status400BadRequest, "入力内容を確認してください"),
+            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "この操作は許可されていません"),
+            TooManyRequestsException => (StatusCodes.Status429TooManyRequests, "しばらく待ってからやり直してください"),
             InvalidOperationException => (StatusCodes.Status503ServiceUnavailable, "Service is not configured"),
             _ => (StatusCodes.Status500InternalServerError, "Unexpected server error")
         };

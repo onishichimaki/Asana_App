@@ -1,19 +1,27 @@
 using Microsoft.AspNetCore.Mvc;
 using TaskCapture.Api.Contracts;
+using TaskCapture.Api.Security;
 using TaskCapture.Api.Services;
 
 namespace TaskCapture.Api.Controllers;
 
 [ApiController]
 [Route("api/task-candidates")]
-public sealed class TaskCandidatesController(TaskWorkflowService workflow) : ControllerBase
+public sealed class TaskCandidatesController(
+    TaskWorkflowService workflow,
+    ICurrentUserContext currentUser) : ControllerBase
 {
     [HttpPut("{candidateId:guid}")]
     public async Task<ActionResult<TaskCandidateResponse>> Update(
         Guid candidateId,
         [FromBody] CandidateUpdateRequest request,
         CancellationToken cancellationToken) =>
-        Ok(await workflow.UpdateCandidateAsync(candidateId, request, HttpContext.TraceIdentifier, cancellationToken));
+        Ok(await workflow.UpdateCandidateAsync(
+            candidateId,
+            request,
+            currentUser.ClientKey,
+            HttpContext.TraceIdentifier,
+            cancellationToken));
 
     [HttpPost("{candidateId:guid}/register")]
     public async Task<ActionResult<RegistrationResponse>> Register(
@@ -21,7 +29,12 @@ public sealed class TaskCandidatesController(TaskWorkflowService workflow) : Con
         [FromBody] CandidateUpdateRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await workflow.RegisterAsync(candidateId, request, HttpContext.TraceIdentifier, cancellationToken);
+        var result = await workflow.RegisterAsync(
+            candidateId,
+            request,
+            currentUser.ClientKey,
+            HttpContext.TraceIdentifier,
+            cancellationToken);
         return result.Succeeded ? Ok(result) : StatusCode(StatusCodes.Status502BadGateway, result);
     }
 }

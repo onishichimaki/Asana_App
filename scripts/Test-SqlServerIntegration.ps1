@@ -84,7 +84,7 @@ $secondProcess = $null
 
 try {
     $marker = 'SQL persistence smoke ' + (Get-Date -Format 'yyyyMMdd-HHmmss')
-    $headers = @{ 'X-TaskCapture-Client' = 'sql-server-smoke' }
+    $headers = @{}
 
     $firstProcess = Start-TaskCaptureApi 'first'
     $spaResponse = Invoke-WebRequest -Uri "$baseUrl/"
@@ -237,7 +237,7 @@ SELECT CONCAT(
         WHERE c.TaskRequestId='$requestId' AND sr.Succeeded=1 AND sr.Provider='Mock'), '|',
     (SELECT COUNT(*) FROM AuditLogs WHERE EntityId IN ('$requestId','$candidateId')), '|',
     (SELECT COUNT(*) FROM ApplicationSettings), '|',
-    (SELECT COUNT(*) FROM Users WHERE ClientKey='sql-server-smoke'), '|',
+    (SELECT COUNT(*) FROM Users WHERE Email='local-user@taskcapture.local'), '|',
     (SELECT COUNT(*) FROM WbsImportProfiles WHERE Id='$wbsProfileId'), '|',
     (SELECT COUNT(*) FROM WbsImportBatches WHERE Id='$wbsBatchId' AND Status='Registered'), '|',
     (SELECT COUNT(*) FROM WbsImportRows

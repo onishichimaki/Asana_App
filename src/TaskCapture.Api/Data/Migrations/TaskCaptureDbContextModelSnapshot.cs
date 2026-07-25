@@ -49,6 +49,73 @@ namespace TaskCapture.Api.Data.Migrations
                     b.ToTable("ApplicationSettings");
                 });
 
+            modelBuilder.Entity("TaskCapture.Api.Data.AsanaConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AsanaUserGid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("AsanaUserName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("ConnectedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<string>("GrantedScopes")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ProtectedAccessToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("ProtectedRefreshToken")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<DateTimeOffset?>("TokenExpiresAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WorkspaceGid")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("WorkspaceName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AsanaUserGid");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("AsanaConnections");
+                });
+
             modelBuilder.Entity("TaskCapture.Api.Data.AsanaRegistration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -208,6 +275,51 @@ namespace TaskCapture.Api.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.EmailLoginCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<int>("FailedAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset?>("UsedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("Email", "CreatedAtUtc");
+
+                    b.ToTable("EmailLoginCodes");
                 });
 
             modelBuilder.Entity("TaskCapture.Api.Data.TaskCandidate", b =>
@@ -373,12 +485,158 @@ namespace TaskCapture.Api.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("IdentityProvider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LastLoginAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<bool>("RestrictProjects")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SubjectId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClientKey")
                         .IsUnique();
 
+                    b.HasIndex("Email");
+
+                    b.HasIndex("IdentityProvider", "SubjectId");
+
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.UserProjectPreference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsFavorite")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ProjectGid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ProjectName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ProjectGid")
+                        .IsUnique();
+
+                    b.ToTable("UserProjectPreferences");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<string>("UserAgentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("UserId", "ExpiresAtUtc");
+
+                    b.ToTable("UserSessions");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.WbsColumnAlias", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ColumnName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<string>("NormalizedColumnName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "NormalizedColumnName")
+                        .IsUnique();
+
+                    b.ToTable("WbsColumnAliases");
                 });
 
             modelBuilder.Entity("TaskCapture.Api.Data.WbsImportBatch", b =>
@@ -390,6 +648,11 @@ namespace TaskCapture.Api.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasPrecision(0)
                         .HasColumnType("datetimeoffset(0)");
+
+                    b.Property<string>("CustomFieldTargetsJson")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<int>("FailedRows")
                         .HasColumnType("int");
@@ -412,6 +675,9 @@ namespace TaskCapture.Api.Data.Migrations
                     b.Property<string>("ProjectGid")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("PutUnmatchedExtraFieldsInDescription")
+                        .HasColumnType("bit");
 
                     b.Property<string>("SectionGid")
                         .HasMaxLength(64)
@@ -532,6 +798,11 @@ namespace TaskCapture.Api.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("ContentHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -560,6 +831,14 @@ namespace TaskCapture.Api.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<decimal?>("EstimatedCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("EstimatedHours")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("ExternalTaskGid")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
@@ -577,6 +856,22 @@ namespace TaskCapture.Api.Data.Migrations
                     b.Property<Guid?>("ParentRowId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("PreviousExternalTaskGid")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PreviousExternalTaskUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Priority")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Progress")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Provider")
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
@@ -588,6 +883,10 @@ namespace TaskCapture.Api.Data.Migrations
                     b.Property<string>("ResolvedAssigneeName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("RevertedAtUtc")
+                        .HasPrecision(0)
+                        .HasColumnType("datetimeoffset(0)");
 
                     b.Property<string>("RowHash")
                         .IsRequired()
@@ -631,6 +930,9 @@ namespace TaskCapture.Api.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<bool>("WasCreatedInBatch")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("WbsImportBatchId")
                         .HasColumnType("uniqueidentifier");
 
@@ -646,6 +948,17 @@ namespace TaskCapture.Api.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("WbsImportRows");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.AsanaConnection", b =>
+                {
+                    b.HasOne("TaskCapture.Api.Data.User", "User")
+                        .WithOne("AsanaConnection")
+                        .HasForeignKey("TaskCapture.Api.Data.AsanaConnection", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("TaskCapture.Api.Data.AsanaRegistration", b =>
@@ -706,6 +1019,39 @@ namespace TaskCapture.Api.Data.Migrations
                 {
                     b.HasOne("TaskCapture.Api.Data.User", "User")
                         .WithMany("TaskRequests")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.UserProjectPreference", b =>
+                {
+                    b.HasOne("TaskCapture.Api.Data.User", "User")
+                        .WithMany("ProjectPreferences")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.UserSession", b =>
+                {
+                    b.HasOne("TaskCapture.Api.Data.User", "User")
+                        .WithMany("Sessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaskCapture.Api.Data.WbsColumnAlias", b =>
+                {
+                    b.HasOne("TaskCapture.Api.Data.User", "User")
+                        .WithMany("WbsColumnAliases")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -779,9 +1125,17 @@ namespace TaskCapture.Api.Data.Migrations
 
             modelBuilder.Entity("TaskCapture.Api.Data.User", b =>
                 {
+                    b.Navigation("AsanaConnection");
+
                     b.Navigation("AuditLogs");
 
+                    b.Navigation("ProjectPreferences");
+
+                    b.Navigation("Sessions");
+
                     b.Navigation("TaskRequests");
+
+                    b.Navigation("WbsColumnAliases");
 
                     b.Navigation("WbsImportBatches");
 

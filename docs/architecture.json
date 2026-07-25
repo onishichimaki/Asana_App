@@ -1,15 +1,15 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "メイリオUI優先のReact SPAでテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込み、親タスクとサブタスクを確認後にASP.NET Core API経由でAsanaへ登録するMVP。SQL Serverが通常入力とWBSの行別履歴・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "会社メールの個別アカウントでログインし、メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込んでAsanaへ登録するMVP。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
       "name": "Responsive Web UI",
       "type": "React SPA",
-      "responsibility": "メイリオUIを優先し、通常のテキスト・ファイル・音声入力とWBS一括取込を同じSPAの明確な2モードで提供する。",
+      "responsibility": "メイリオUIを優先し、通常入力、WBS一括取込、登録履歴、接続・利用設定を同じSPAの明確な4モードで提供する。",
       "main_inputs": ["利用者テキスト", "TXT/MD/CSV", "JPEG/PNG/WebP", "XLSX/CSV WBS", "音声", "launcher clipboard message", "API response"],
       "main_outputs": ["organize request", "candidate update", "registration request", "normalized WBS rows"],
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/AsanaDestinationPicker.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/AuthGate.tsx", "src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/src/HistoryPanel.tsx", "src/taskcapture-web/src/SettingsPanel.tsx", "src/taskcapture-web/src/AsanaDestinationPicker.tsx", "src/taskcapture-web/src/App.css", "src/taskcapture-web/vite.config.ts"]
     },
     {
       "id": "wbs_import_ui",
@@ -28,6 +28,24 @@
       "main_inputs": ["HTTP JSON", "environment variables", "appsettings"],
       "main_outputs": ["HTTP JSON", "Problem Details", "SPA assets"],
       "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs", "src/TaskCapture.Api/appsettings.json"]
+    },
+    {
+      "id": "email_auth_and_authorization",
+      "name": "Email Authentication and Authorization",
+      "type": "ASP.NET Core authentication boundary",
+      "responsibility": "会社メールの確認コード、HttpOnly Cookie session、利用停止・管理者policy、所有者分離、project許可、rate limitを強制する。",
+      "main_inputs": ["company email", "six digit code", "authentication cookie", "administrator settings"],
+      "main_outputs": ["authenticated claims", "User and UserSession rows", "401/403", "audit events"],
+      "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "src/TaskCapture.Api/Security/CurrentUserContext.cs", "src/TaskCapture.Api/Security/AccessClaimsTransformation.cs", "src/TaskCapture.Api/Controllers/AdminController.cs"]
+    },
+    {
+      "id": "asana_user_connection",
+      "name": "Per-user Asana Connection",
+      "type": "OAuth and token provider",
+      "responsibility": "PATまたは利用者別OAuthを切り替え、OAuth state検証、token暗号化、refresh、解除、利用者別project制限を提供する。",
+      "main_inputs": ["OAuth code/state", "Data Protection keys", "Asana OAuth settings"],
+      "main_outputs": ["protected token row", "Bearer access token", "connection status"],
+      "source_files": ["src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
     },
     {
       "id": "task_workflow",
@@ -60,7 +78,7 @@
       "id": "asana_integration",
       "name": "Asana Integration",
       "type": "External service adapter",
-      "responsibility": "設定でMockまたはAsana REST APIを選び、サーバー側PATだけを使う。project/section一覧をUIへ提供し、自由文担当者を安全に解決して開始日付きの親タスクとサブタスクを作成する。",
+      "responsibility": "設定でMockまたはAsana REST APIを選び、PATまたは利用者別OAuth tokenをサーバー側だけで使う。project/section一覧をUIへ提供し、自由文担当者を安全に解決して開始日付きの親タスクとサブタスクを作成する。",
       "main_inputs": ["confirmed candidate", "free-text assignee", "start/due dates", "project/section metadata request", "server-side Asana settings"],
       "main_outputs": ["project/section options", "provider result", "external GID", "resolved assignee GID/name/status", "permalink, warning or safe error"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
@@ -69,10 +87,10 @@
       "id": "persistence",
       "name": "Persistence",
       "type": "EF Core / SQL Server",
-      "responsibility": "通常入力とWBSの親子候補・行別登録結果を含む11テーブルのスキーマ、関係、migration、起動時初期化を管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
+      "responsibility": "認証、暗号化Asana接続、権限、通常入力、WBSの親子候補・行別登録結果を含む16テーブルと8 migrationを管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
       "main_inputs": ["entities", "connection configuration"],
       "main_outputs": ["SQL Server rows", "migration DDL"],
-      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs"]
+      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs", "src/TaskCapture.Api/Data/Migrations/20260724095907_NormalizeLegacyWbsRows.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs"]
     },
     {
       "id": "windows_launcher",
@@ -144,6 +162,13 @@
       "source_files": ["src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
     },
     {
+      "id": "asana_fields_get",
+      "name": "GET /api/asana/projects/{projectGid}/fields",
+      "type": "HTTP GET",
+      "description": "選択したprojectで入力可能な進み具合、優先度、数値、文字の追加項目を返す。",
+      "source_files": ["src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
+    },
+    {
       "id": "candidate_put",
       "name": "PUT /api/task-candidates/{id}",
       "type": "HTTP PUT",
@@ -168,14 +193,28 @@
       "id": "wbs_batches_api",
       "name": "POST/GET /api/wbs-imports/batches",
       "type": "HTTP batch API",
-      "description": "最大5,000件の正規化行をserver dry-runして保存し、batchと行別の検証・登録結果を返す。",
+      "description": "最大5,000件の確認済み行を登録前に検証して保存し、新規・変更あり・前回と同じ、担当者の確認結果を返す。GETは直近の取込履歴を返す。",
       "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Contracts/WbsImportDtos.cs"]
     },
     {
       "id": "wbs_register_api",
       "name": "POST /api/wbs-imports/batches/{id}/register",
       "type": "HTTP POST",
-      "description": "親優先でWBS行を登録し、成功済み・duplicate行を再作成せず、失敗・blocked行を再開可能にする。",
+      "description": "親優先で新規行を作成し、変更行は利用者の選択に応じて上書きする。前回と同じ行は再作成せず、失敗行だけ再開できる。",
+      "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
+    },
+    {
+      "id": "wbs_column_names_api",
+      "name": "GET /api/wbs-imports/column-names",
+      "type": "HTTP GET",
+      "description": "利用者が読み取り方の保存時に覚えさせた会社独自の列名と用途を返す。",
+      "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
+    },
+    {
+      "id": "wbs_undo_api",
+      "name": "POST /api/wbs-imports/batches/{id}/undo",
+      "type": "HTTP POST",
+      "description": "その取り込みで新しく作ったAsanaタスクだけを子から順に取り除き、結果を行ごとに保存する。",
       "source_files": ["src/TaskCapture.Api/Controllers/WbsImportsController.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Services/AsanaServices.cs"]
     },
     {
@@ -191,8 +230,32 @@
       {
         "id": "users",
         "name": "Users",
-        "description": "限定利用のclient keyと表示名を保持する。認証資格情報は保持しない。",
-        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs"]
+        "description": "会社メール、identity、表示名、有効/管理者、project制限を保持する。パスワードは保持しない。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs"]
+      },
+      {
+        "id": "email_login_codes",
+        "name": "EmailLoginCodes",
+        "description": "salt付きPBKDF2 hash、期限、失敗回数、使用時刻を短期間保持する。平文コードは保持しない。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs"]
+      },
+      {
+        "id": "user_sessions",
+        "name": "UserSessions",
+        "description": "Cookieと対応するsession、user-agent hash、期限、失効、最終確認時刻を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Controllers/AuthController.cs"]
+      },
+      {
+        "id": "asana_connections",
+        "name": "AsanaConnections",
+        "description": "利用者のAsana user/workspaceとData Protectionで暗号化したaccess/refresh token、期限を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs"]
+      },
+      {
+        "id": "user_project_preferences",
+        "name": "UserProjectPreferences",
+        "description": "利用者別のAsana projectお気に入りと管理者が許可した登録先を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Controllers/AdminController.cs"]
       },
       {
         "id": "task_requests",
@@ -243,19 +306,43 @@
         "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
       },
       {
+        "id": "wbs_column_aliases",
+        "name": "WbsColumnAliases",
+        "description": "利用者ごとに会社独自の列名、正規化した列名、用途を保持し、別レイアウトの自動判定に再利用する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs"]
+      },
+      {
         "id": "wbs_import_batches",
         "name": "WbsImportBatches",
-        "description": "ファイルhash、layout signature、profile参照、登録先、行数、Ready/Invalid/Registered等のbatch状態を保持する。",
-        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs"]
+        "description": "ファイル、読取設定、登録先、追加項目の入れ先、行数、Ready/Registered/Reverted等の取込状態を保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs"]
       },
       {
         "id": "wbs_import_rows",
         "name": "WbsImportRows",
-        "description": "元行、親行、深度、開始日・期限を含む正規化項目、row/content hash、検証、Asana GID/URL、担当者解決、失敗理由を行単位で保持する。",
-        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs"]
+        "description": "元行、親行、開始日・期限、進み具合・優先度・予定時間・予定費用、前回との差、Asana登録先、担当者確認、取り消し結果を行単位で保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/WbsImportService.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs"]
       }
     ],
     "relationships": [
+      {
+        "id": "user_sessions",
+        "name": "Users 1:N UserSessions",
+        "description": "複数端末のsessionを個別に期限・失効管理する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs"]
+      },
+      {
+        "id": "user_asana_connection",
+        "name": "Users 1:0..1 AsanaConnections",
+        "description": "利用者ごとに有効なAsana OAuth接続を1件保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs"]
+      },
+      {
+        "id": "user_project_preferences",
+        "name": "Users 1:N UserProjectPreferences",
+        "description": "利用者別のお気に入りと管理者許可projectを保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
+      },
       {
         "id": "user_requests",
         "name": "Users 1:N TaskRequests",
@@ -299,6 +386,12 @@
         "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
       },
       {
+        "id": "user_wbs_column_aliases",
+        "name": "Users 1:N WbsColumnAliases",
+        "description": "利用者ごとに覚えた列名と用途を分離して保持する。",
+        "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Services/WbsImportService.cs"]
+      },
+      {
         "id": "user_wbs_batches",
         "name": "Users 1:N WbsImportBatches",
         "description": "利用者ごとの取込履歴。profileを削除してもbatchは残る。",
@@ -339,15 +432,22 @@
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
-      "description": "workspaceのproject一覧とproject別section一覧を取得して名前選択へ提供する。workspace usersで担当者名を安全にGIDへ解決し、親と子へ開始日・期限と同じ担当者GIDを送る。Bearer PATはサーバー設定だけから読み取る。",
-      "source_files": ["src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/appsettings.json"]
+      "description": "PATまたは利用者別OAuthでworkspaceのproject/sectionを取得する。OAuth tokenは暗号化保存・サーバーrefreshし、利用者のAsana権限とアプリ側許可の両方を満たすprojectだけへ登録する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/appsettings.json"]
+    },
+    {
+      "id": "smtp_email",
+      "name": "Company SMTP",
+      "type": "SMTP submission",
+      "description": "本番の会社メール確認コードを送る。SMTP資格情報と平文コードはDB・監査ログへ保存しない。Development/TestはMock senderへ差し替える。",
+      "source_files": ["src/TaskCapture.Api/Services/AccountEmailSender.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "README.md"]
     },
     {
       "id": "sql_server",
       "name": "SQL Server",
       "type": "Relational database",
-      "description": "EF Core SqlServer providerと5 migrationで通常入力・WBS親子、開始日・期限、外部登録、担当者解決結果を11テーブルへ保存する。",
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs"]
+      "description": "EF Core SqlServer providerと8 migrationで認証、暗号化Asana接続、権限、通常入力、WBS、監査を16テーブルへ保存する。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs", "src/TaskCapture.Api/Data/Migrations/20260724095907_NormalizeLegacyWbsRows.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs"]
     },
     {
       "id": "browser_capture_apis",
@@ -365,6 +465,22 @@
     }
   ],
   "data_flows": [
+    {
+      "id": "email_sign_in_flow",
+      "name": "会社メール確認コードログイン",
+      "inputs": ["allowed company email", "six digit verification code"],
+      "processing": ["domain validation", "send and attempt rate limiting", "PBKDF2 hash save", "SMTP or Mock delivery", "fixed-time verification", "User and UserSession save", "HttpOnly Cookie issue", "audit save"],
+      "outputs": ["authenticated session", "per-user client key", "401/403 on invalid access"],
+      "source_files": ["src/taskcapture-web/src/AuthGate.tsx", "src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs"]
+    },
+    {
+      "id": "asana_oauth_flow",
+      "name": "利用者別Asana接続",
+      "inputs": ["authenticated user", "OAuth authorization code", "protected state"],
+      "processing": ["state and expiry validation", "token exchange", "Asana profile/workspace read", "Data Protection token encryption", "server-side refresh", "project permission filtering"],
+      "outputs": ["encrypted AsanaConnection", "user-visible connection status", "authorized Bearer token"],
+      "source_files": ["src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
+    },
     {
       "id": "organize_flow",
       "name": "入力から候補",
@@ -426,15 +542,15 @@
   ],
   "risks_or_unknowns": [
     {
-      "id": "limited_auth_only",
-      "name": "本格認証なし",
-      "description": "X-TaskCapture-Clientは端末識別用で認証ではない。外部公開前に組織認証、TLS、rate limitが必要。",
-      "source_files": ["src/TaskCapture.Api/Controllers/TaskRequestsController.cs", "DECISIONS.md"]
+      "id": "external_identity_not_integrated",
+      "name": "SSOは未統合",
+      "description": "会社メール確認コードと利用者別認可は実装済みだが、Entra ID等のSSOは組織管理者同意を前提とするため対象外。本番前にSMTP、HTTPS、cookie domain、Data Protection鍵を設定する。",
+      "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "DECISIONS.md"]
     },
     {
       "id": "local_integrations_only",
       "name": "実連携検証はローカル限定",
-      "description": "DESKTOP-RQ3T767のSQL Serverでは11テーブル、Asana限定projectでは通常入力とWBSの自由文担当者解決・親子実登録まで成功済み。HTTPS配備先のSecret Store、ネットワーク、運用監視は未検証。",
+      "description": "DESKTOP-RQ3T767のSQL Serverでは16テーブルと8 migration、Asana限定projectでは通常入力とWBSの実登録まで成功済み。本番SMTP、OAuthアプリ、HTTPS、Secret Store、運用監視は配備先未設定。",
       "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json"]
     },
     {
@@ -472,7 +588,7 @@
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",
-      "description": "配備先のSecret StoreへSQL Server接続とAsana PAT/project GIDを設定し、組織認証、TLS、rate limit、運用ログ保護を追加する。",
+      "description": "配備先のSecret StoreへSQL接続、SMTP、Asana OAuth Client Secretを設定し、HTTPS URLと永続Data Protection鍵、定期backup、監視通知を有効にする。",
       "source_files": ["README.md", "ARCHITECTURE.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
     },
     {
