@@ -6,6 +6,7 @@ namespace TaskCapture.Launcher;
 
 internal sealed class LauncherForm : Form
 {
+    private const int ScreenEdgeMargin = 16;
     private static readonly Size CompactSize = new(520, 620);
     private static readonly Size ExpandedSize = new(1180, 820);
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
@@ -26,7 +27,7 @@ internal sealed class LauncherForm : Form
         Text = "Task Capture";
         Size = CompactSize;
         MinimumSize = new Size(400, 500);
-        StartPosition = FormStartPosition.CenterScreen;
+        StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = true;
         TopMost = true;
         FormBorderStyle = FormBorderStyle.Sizable;
@@ -41,6 +42,9 @@ internal sealed class LauncherForm : Form
     public async Task ShowCaptureAsync(string? clipboardText)
     {
         _pendingClipboardText = string.IsNullOrWhiteSpace(clipboardText) ? null : clipboardText[..Math.Min(clipboardText.Length, 10_000)];
+        Size = CompactSize;
+        MinimumSize = new Size(400, 500);
+        MoveToBottomRight(Screen.FromPoint(Cursor.Position).WorkingArea);
         if (!Visible) Show();
         WindowState = FormWindowState.Normal;
         Activate();
@@ -106,15 +110,18 @@ internal sealed class LauncherForm : Form
         var nextSize = new Size(
             Math.Min(requested.Width, Math.Max(400, workingArea.Width - 40)),
             Math.Min(requested.Height, Math.Max(500, workingArea.Height - 40)));
-        var center = new Point(Left + Width / 2, Top + Height / 2);
-
         MinimumSize = isWbs
             ? new Size(Math.Min(760, nextSize.Width), Math.Min(600, nextSize.Height))
             : new Size(400, 500);
         Size = nextSize;
+        MoveToBottomRight(workingArea);
+    }
+
+    private void MoveToBottomRight(Rectangle workingArea)
+    {
         Location = new Point(
-            Math.Clamp(center.X - Width / 2, workingArea.Left, workingArea.Right - Width),
-            Math.Clamp(center.Y - Height / 2, workingArea.Top, workingArea.Bottom - Height));
+            Math.Max(workingArea.Left, workingArea.Right - Width - ScreenEdgeMargin),
+            Math.Max(workingArea.Top, workingArea.Bottom - Height - ScreenEdgeMargin));
     }
 
     private void SendClipboardToWeb()

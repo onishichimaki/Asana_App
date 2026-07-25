@@ -153,7 +153,9 @@ dotnet run --project src/TaskCapture.Launcher/TaskCapture.Launcher.csproj
 ```
 
 - タスクトレイに常駐
+- 起動時はタスクバーを避けて画面右下へ表示
 - `Ctrl+Shift+A` でクリップボードを取り込んで表示
+- 通常入力の初期操作はスクロールせず1画面内に表示
 - ウィンドウの最小化・最大化・閉じるボタン
 - 登録成功後に自動で非表示
 - タスクトレイの「Windowsログイン時に起動」で自動起動

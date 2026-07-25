@@ -144,12 +144,17 @@ footer button:disabled { opacity:.45; cursor:default; }
 
 .launcher-shell { padding:5px 0; }
 .launcher-shell .topbar { margin-bottom:5px; }
+.launcher-shell .mode-switch { grid-template-columns:repeat(4,minmax(0,1fr)); gap:3px; margin-bottom:6px; padding:3px; }
+.launcher-shell .mode-switch button { min-height:32px; padding:3px 2px; font-size:.69rem; line-height:1.2; white-space:nowrap; }
 .launcher-shell .panel { padding:10px 12px; }
 .launcher-shell .section-heading,.launcher-shell .input-source-grid { margin-bottom:8px; }
-.launcher-shell .source-button { min-height:38px; }
-.launcher-shell .input-panel>textarea { min-height:96px; }
+.launcher-shell .input-source-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
+.launcher-shell .source-button { min-height:36px; gap:4px; padding:4px; }
+.launcher-shell .source-button strong { font-size:.72rem; }
+.launcher-shell .tool-icon { width:23px; height:23px; font-size:.68rem; }
+.launcher-shell .input-panel>textarea { min-height:86px; }
 .launcher-shell .input-panel>.primary-button { margin-top:8px; }
-.launcher-shell .primary-button,.launcher-shell .asana-button { min-height:44px; }
+.launcher-shell .primary-button,.launcher-shell .asana-button { min-height:40px; }
 .launcher-shell footer { display:none; }
 
 .wbs-page { display:flex; flex-direction:column; gap:10px; }
