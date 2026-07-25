@@ -21,6 +21,15 @@ public sealed class CurrentUserProvisioningMiddleware(RequestDelegate next)
 
             if (user is null)
             {
+                if (currentUser.IdentityProvider.Equals("Email", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await context.Response.WriteAsJsonAsync(
+                        new { detail = "このメールは利用登録されていません。管理者に連絡してください。" },
+                        context.RequestAborted);
+                    return;
+                }
+
                 user = new User
                 {
                     ClientKey = currentUser.ClientKey,

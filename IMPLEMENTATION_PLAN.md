@@ -52,6 +52,12 @@
 - [x] 39. Azure OpenAI v1 strict JSON Schema adapterとRuleBasedフォールバックを追加する
 - [x] 40. Production必須設定の安全側起動検証、ready診断、配布設定例、定期バックアップ登録、受入チェックリストを追加する
 
+## Phase 5: 全社利用の入退場管理
+
+- [x] 41. 管理者が会社メールを事前登録し、未登録メールへの確認コード送信とログインを拒否する
+- [x] 42. 同一メールのAsana OAuth接続が完了するまで通常登録・WBS・履歴APIを拒否し、接続画面へ案内する
+- [x] 43. 利用停止時に全sessionを失効し、Asana OAuth providerへの解除要求とローカルtoken消去を行う
+
 ## 品質ゲート
 
 1. `dotnet build TaskCapture.sln` が成功する。
@@ -74,3 +80,6 @@
 18. CI、配布スクリプト、検証付きSQLバックアップを実行可能な状態に保つ。
 19. Asana OAuthはログイン会社メールとprofile emailが一致しない場合にtokenを保存・使用しないことを確認する。
 20. ProductionはSQL Server、SSL SMTP、利用者別Asana OAuth、Azure OpenAI、HTTPS callback、永続Data Protection鍵の不足を安全に拒否する。
+21. 未登録会社メールはcode送信前に拒否し、管理者が事前登録したメールだけがsessionを作成できることを確認する。
+22. PerUserOAuth構成ではAsana未接続の利用者が業務APIを使えず、同一メールの接続後だけ利用できることを確認する。
+23. 利用停止で全session、provider OAuth、ローカルtokenが失効し、再開後も再接続が必要なことを確認する。

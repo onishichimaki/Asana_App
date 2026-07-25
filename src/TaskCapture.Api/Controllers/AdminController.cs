@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -6,6 +7,7 @@ using TaskCapture.Api.Contracts;
 using TaskCapture.Api.Data;
 using TaskCapture.Api.Options;
 using TaskCapture.Api.Security;
+using TaskCapture.Api.Services;
 
 namespace TaskCapture.Api.Controllers;
 
@@ -16,6 +18,8 @@ public sealed class AdminController(
     TaskCaptureDbContext db,
     ICurrentUserContext currentUser,
     IOptions<AsanaOptions> asanaOptions,
+    IOptions<AccessOptions> accessOptions,
+    AsanaConnectionService asanaConnectionService,
     TimeProvider timeProvider) : ControllerBase
 {
     [HttpGet("users")]
@@ -49,6 +53,64 @@ public sealed class AdminController(
         return Ok(users);
     }
 
+    [HttpPost("users")]
+    public async Task<ActionResult<object>> PreRegisterUser(
+        [FromBody] PreRegisterUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        var email = NormalizeCompanyEmail(request.Email);
+        var clientKey = UserIdentityKey.Create("Email", email);
+        if (await db.Users.AnyAsync(
+                user => user.ClientKey == clientKey || user.Email == email,
+                cancellationToken))
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "このメールはすでに利用登録されています。",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
+            ? email.Split('@')[0]
+            : request.DisplayName.Trim();
+        var user = new User
+        {
+            ClientKey = clientKey,
+            IdentityProvider = "Email",
+            SubjectId = email,
+            Email = email,
+            DisplayName = displayName,
+            IsActive = true,
+            IsAdmin = request.IsAdmin,
+            RestrictProjects = false,
+            CreatedAtUtc = timeProvider.GetUtcNow()
+        };
+        db.Users.Add(user);
+        var actor = await db.Users.SingleAsync(
+            item => item.ClientKey == currentUser.ClientKey,
+            cancellationToken);
+        db.AuditLogs.Add(new AuditLog
+        {
+            UserId = actor.Id,
+            EventType = "UserPreRegistered",
+            EntityType = nameof(User),
+            EntityId = user.Id.ToString(),
+            Detail = $"Registered user {user.Id}; Admin={user.IsAdmin}.",
+            CorrelationId = HttpContext.TraceIdentifier,
+            CreatedAtUtc = timeProvider.GetUtcNow()
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        return Created($"/api/admin/users/{user.Id}", new
+        {
+            user.Id,
+            user.Email,
+            user.DisplayName,
+            user.IsActive,
+            user.IsAdmin
+        });
+    }
+
     [HttpPut("users/{userId:guid}/access")]
     public async Task<IActionResult> UpdateUserAccess(
         Guid userId,
@@ -57,6 +119,7 @@ public sealed class AdminController(
     {
         var target = await db.Users
             .Include(user => user.ProjectPreferences)
+            .Include(user => user.Sessions)
             .SingleOrDefaultAsync(user => user.Id == userId, cancellationToken);
         if (target is null) return NotFound();
 
@@ -70,6 +133,7 @@ public sealed class AdminController(
             });
         }
 
+        var isBeingDeactivated = target.IsActive && !request.IsActive;
         target.IsActive = request.IsActive;
         target.IsAdmin = request.IsAdmin;
         target.RestrictProjects = request.RestrictProjects;
@@ -97,6 +161,19 @@ public sealed class AdminController(
             preference.UpdatedAtUtc = timeProvider.GetUtcNow();
         }
 
+        if (isBeingDeactivated)
+        {
+            var now = timeProvider.GetUtcNow();
+            foreach (var session in target.Sessions.Where(session => session.RevokedAtUtc is null))
+            {
+                session.RevokedAtUtc = now;
+            }
+            await asanaConnectionService.RevokeForUserAsync(
+                target.Id,
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+        }
+
         var actor = await db.Users.SingleAsync(
             user => user.ClientKey == currentUser.ClientKey,
             cancellationToken);
@@ -112,6 +189,27 @@ public sealed class AdminController(
         });
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    private string NormalizeCompanyEmail(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant();
+        if (!new EmailAddressAttribute().IsValid(normalized))
+        {
+            throw new ValidationException("会社メールの形式を確認してください。");
+        }
+
+        var domain = normalized[(normalized.LastIndexOf('@') + 1)..];
+        var allowedDomains = accessOptions.Value.AllowedEmailDomains
+            .Select(item => item.Trim().TrimStart('@').ToLowerInvariant())
+            .Where(item => item.Length > 0)
+            .ToArray();
+        if (allowedDomains.Length == 0
+            || !allowedDomains.Contains(domain, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ValidationException("登録できる会社メールではありません。");
+        }
+        return normalized;
     }
 
     [HttpGet("audit")]

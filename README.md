@@ -70,7 +70,7 @@ dotnet user-secrets set "ConnectionStrings:TaskCapture" "Server=DESKTOP-RQ3T767;
 
 ## 会社メールの個別アカウント
 
-Entra IDは不要です。会社メールへ確認コードを送り、メールアドレスごとに個別アカウントを作ります。パスワードは保持しません。
+Entra IDは不要です。管理者が事前登録した会社メールだけに確認コードを送り、メールアドレスごとに個別アカウントを作ります。パスワードは保持しません。
 
 本番環境の主な設定:
 
@@ -88,6 +88,10 @@ Access__EmailCode__Delivery__FromAddress=taskcapture@example.co.jp
 ```
 
 ProductionでMockメール送信やDevelopment認証を指定すると起動を拒否します。SMTPパスワードは環境変数または安全なシークレット管理へ置き、Gitへ保存しません。
+
+初回だけ `Access__AdminEmails` に設定した管理者メールを起点にします。このメールでログインし、「接続・利用設定」→「利用者を事前登録」から社員の会社メールを追加します。事前登録されていないメールには確認コードを送らず、ログインできません。`AdminEmails` は初期管理者のサーバー側許可リストなので、運用開始後も必要最小限にします。
+
+退職・異動時は管理画面で「このアプリを利用できる」を外して保存します。その時点で発行済みログインをすべて失効し、Asana OAuthを解除してローカルの暗号化tokenも消去します。再び有効にした場合はAsanaへの再接続が必要です。
 
 ## Gemini
 
@@ -145,7 +149,9 @@ Integration__Asana__OAuth__RequireMatchingEmail=true
 DataProtection__KeysPath=C:\TaskCapture\DataProtectionKeys
 ```
 
-利用者は「接続・利用設定」から、ログイン中の会社メールと同じメールのAsanaを接続します。異なるメール・emailを取得できないアカウントは拒否し、tokenを保存しません。アクセストークンと更新トークンはASP.NET Core Data Protectionで暗号化してSQL Serverへ保存し、ブラウザーへ保持しません。各利用者には、そのAsanaアカウントで参照できるプロジェクトだけが表示されます。管理者はさらにアプリ側で登録先を限定できます。
+利用者は初回ログイン後、「接続・利用設定」からログイン中の会社メールと同じメールのAsanaを接続します。接続が完了するまでは通常登録、WBS、履歴を利用できません。異なるメール、emailを取得できないアカウント、`DefaultWorkspaceGid` の社内ワークスペースに所属しないアカウントは拒否し、tokenを保存しません。アクセストークンと更新トークンはASP.NET Core Data Protectionで暗号化してSQL Serverへ保存し、ブラウザーへ保持しません。各利用者には、そのAsanaアカウントで参照できるプロジェクトだけが表示されます。管理者はさらにアプリ側で登録先を限定できます。
+
+全社展開時の利用開始順は「管理者が会社メールを事前登録 → 利用者がメール確認コードでログイン → 同じメールのAsanaをOAuth接続 → 利用可能なプロジェクトから登録」です。社内Asana workspaceは `DefaultWorkspaceGid` で1つに固定します。
 
 ## Excel / CSV WBS取込
 

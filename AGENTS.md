@@ -44,7 +44,9 @@ SQL Server関連を変更した場合は、利用可能な検証用インスタ�
 - API の DTO へ DataAnnotations を設定し、自由入力の最大長を維持します。
 - Asana PAT、AI API キー、接続文字列をログへ出しません。
 - メール確認コード、session識別子、Asana OAuth tokenをログへ出しません。OAuth tokenはData Protection暗号文だけをDBへ保存します。
+- EmailCode認証は管理者が事前登録した有効な会社メールだけにcodeを送ります。`Access:AdminEmails` の初期管理者以外を自動作成する挙動へ戻しません。
 - 利用者別Asana OAuthは会社メールとAsana profile emailが一致した場合だけtokenを保存・使用します。不一致拒否と旧connection再接続を弱めません。
+- PerUserOAuthでは接続用API以外の業務APIに有効なAsana接続を必須とし、利用停止時は全session失効、provider revoke、ローカルtoken消去を維持します。
 - 本番の `Access:Mode=EmailCode`、SMTP、Asana OAuth、永続Data Protection鍵の安全側起動チェックを弱めません。
 - Controllerでクライアント由来の利用者IDを信用せず、`ICurrentUserContext` の所有者・管理者policy・`ProjectAccessService`を使用します。
 - `Integration:Asana:Mode=Mock` と `TaskOrganization:Mode=RuleBased` を常に動作可能に保ち、Gemini失敗時のフォールバックを壊しません。

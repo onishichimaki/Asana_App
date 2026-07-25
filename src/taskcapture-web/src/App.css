@@ -33,6 +33,10 @@ h2 { margin:0; font-size:1.02rem; line-height:1.4; letter-spacing:-.01em; }
 .mode-switch { display:grid; grid-template-columns:1fr 1.35fr .75fr .85fr; gap:5px; margin-bottom:10px; padding:4px; border:1px solid var(--line); border-radius:11px; background:#e9edf4; }
 .mode-switch button { min-height:38px; border:0; border-radius:8px; color:#5a6678; background:transparent; cursor:pointer; font-size:.82rem; font-weight:700; }
 .mode-switch button.active { color:var(--accent-dark); background:#fff; box-shadow:0 2px 8px rgba(28,39,57,.1); }
+.mode-switch button:disabled { cursor:not-allowed; opacity:.42; }
+.connection-required { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; padding:11px 13px; border:1px solid #efc17c; border-radius:11px; color:#714b09; background:#fff8eb; }
+.connection-required strong { font-size:.82rem; }
+.connection-required span { font-size:.72rem; line-height:1.5; }
 
 .panel { padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:0 8px 24px rgba(28,39,57,.06); }
 .candidate-panel { margin-top:10px; }
@@ -115,6 +119,13 @@ textarea:focus,input:focus,select:focus { border-color:var(--accent); box-shadow
 .settings-detail dt { color:var(--muted); }
 .settings-detail dd { margin:0; font-weight:700; overflow-wrap:anywhere; }
 .settings-muted { color:var(--muted); font-size:.75rem; line-height:1.55; }
+.admin-register-form { display:flex; flex-direction:column; gap:10px; margin:10px 0 14px; padding:13px; border:1px solid #cdd9f8; border-radius:11px; background:#f7f9ff; }
+.admin-register-form>div:first-child strong,.admin-register-form>div:first-child small { display:block; }
+.admin-register-form>div:first-child small { margin-top:3px; color:var(--muted); font-size:.68rem; }
+.admin-register-fields { display:grid; grid-template-columns:1.2fr 1fr; gap:8px; }
+.admin-register-fields label { display:flex; flex-direction:column; gap:4px; color:#344052; font-size:.72rem; font-weight:700; }
+.admin-register-check { display:flex; align-items:center; gap:6px; color:#3e4a5d; font-size:.72rem; font-weight:700; }
+.admin-register-check input { width:17px; min-height:17px; }
 .admin-user-card { margin-top:10px; padding:13px; border:1px solid var(--line); border-radius:11px; background:#fbfcfe; }
 .admin-user-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .admin-user-heading strong,.admin-user-heading small { display:block; }
@@ -332,6 +343,7 @@ footer button:disabled { opacity:.45; cursor:default; }
   .connection { display:none; }
   .account-button>strong { max-width:90px; }
   .mode-switch { grid-template-columns:1fr 1fr; }
+  .admin-register-fields { grid-template-columns:1fr; }
   .settings-detail div { grid-template-columns:100px 1fr; }
   .history-tools { grid-template-columns:1fr; }
   .history-card { grid-template-columns:minmax(0,1fr) auto; }

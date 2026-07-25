@@ -93,7 +93,9 @@ type AppProps = {
 }
 
 function App({ account, onLogout }: AppProps) {
-  const [mode, setMode] = useState<'capture' | 'wbs' | 'history' | 'settings'>(asanaCallback ? 'settings' : 'capture')
+  const [asanaConnected, setAsanaConnected] = useState(account.asanaConnected)
+  const connectionBlocked = account.asanaConnectionRequired && !asanaConnected
+  const [mode, setMode] = useState<'capture' | 'wbs' | 'history' | 'settings'>(asanaCallback || connectionBlocked ? 'settings' : 'capture')
   const [rawText, setRawText] = useState('')
   const [source, setSource] = useState<InputSource>('text')
   const [candidate, setCandidate] = useState<CandidateDraft | null>(null)
@@ -121,6 +123,10 @@ function App({ account, onLogout }: AppProps) {
       window.history.replaceState({}, '', `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`)
     }
   }, [])
+
+  useEffect(() => {
+    if (connectionBlocked && mode !== 'settings') setMode('settings')
+  }, [connectionBlocked, mode])
 
   useEffect(() => {
     const webview = window.chrome?.webview
@@ -351,16 +357,17 @@ function App({ account, onLogout }: AppProps) {
       </header>
 
       <nav className="mode-switch" aria-label="登録方法">
-        <button type="button" className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>1件ずつ登録</button>
-        <button type="button" className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>{isLauncher ? '一括登録' : 'Excel・CSV一括登録'}</button>
-        <button type="button" className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
+        <button type="button" disabled={connectionBlocked} className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>1件ずつ登録</button>
+        <button type="button" disabled={connectionBlocked} className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>{isLauncher ? '一括登録' : 'Excel・CSV一括登録'}</button>
+        <button type="button" disabled={connectionBlocked} className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
         <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>接続・利用設定</button>
       </nav>
 
       {asanaCallbackNotice && <div className={asanaCallbackNotice.kind === 'success' ? 'wbs-message' : 'error-message'} role={asanaCallbackNotice.kind === 'success' ? 'status' : 'alert'}>{asanaCallbackNotice.text}</div>}
+      {connectionBlocked && <div className="connection-required" role="status"><strong>Asanaの接続が必要です</strong><span>会社メールと同じAsanaアカウントを接続すると、タスク登録を利用できます。</span></div>}
 
       {mode === 'settings'
-        ? <SettingsPanel account={account} />
+        ? <SettingsPanel account={account} onConnectionChanged={setAsanaConnected} />
         : mode === 'history'
         ? <HistoryPanel />
         : mode === 'wbs'

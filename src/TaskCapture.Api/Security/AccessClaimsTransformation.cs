@@ -38,7 +38,9 @@ public sealed class AccessClaimsTransformation(
             || (!string.IsNullOrWhiteSpace(email)
                 && configured.AllowedEmailDomains.Any(domain =>
                     email.EndsWith($"@{domain.Trim().TrimStart('@')}", StringComparison.OrdinalIgnoreCase)));
-        var allowed = allowedByDomain && (persisted?.IsActive ?? true);
+        var requiresPreRegistration = provider.Equals("Email", StringComparison.OrdinalIgnoreCase);
+        var allowed = allowedByDomain
+            && (requiresPreRegistration ? persisted?.IsActive == true : persisted?.IsActive ?? true);
 
         if (allowed && !principal.HasClaim(TaskCapturePolicies.AllowedClaim, "true"))
         {

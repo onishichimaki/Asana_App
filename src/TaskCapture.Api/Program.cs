@@ -143,14 +143,23 @@ builder.Services.AddScoped<IAccountEmailSender>(services =>
 });
 builder.Services.AddAuthorization(options =>
 {
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+    options.DefaultPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .RequireClaim(TaskCapturePolicies.AllowedClaim, "true")
         .Build();
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .RequireClaim(TaskCapturePolicies.AllowedClaim, "true")
+        .AddRequirements(new AsanaConnectionRequirement())
+        .Build();
     options.AddPolicy(
         TaskCapturePolicies.Admin,
-        policy => policy.RequireRole(TaskCapturePolicies.Admin));
+        policy => policy
+            .RequireAuthenticatedUser()
+            .RequireClaim(TaskCapturePolicies.AllowedClaim, "true")
+            .RequireRole(TaskCapturePolicies.Admin));
 });
+builder.Services.AddScoped<IAuthorizationHandler, AsanaConnectionAuthorizationHandler>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -241,11 +250,16 @@ builder.Services.AddScoped<AsanaConnectionService>();
 builder.Services.AddScoped<IAsanaAccessTokenProvider>(services =>
     services.GetRequiredService<AsanaConnectionService>());
 builder.Services.AddScoped<ProjectAccessService>();
-builder.Services.AddHttpClient<ApiAsanaTaskService>(client =>
+builder.Services.AddHttpClient("AsanaApi", client =>
 {
     client.BaseAddress = new Uri("https://app.asana.com/api/1.0/");
     client.Timeout = TimeSpan.FromSeconds(20);
 });
+builder.Services.AddScoped<ApiAsanaTaskService>(services => new ApiAsanaTaskService(
+    services.GetRequiredService<IHttpClientFactory>().CreateClient("AsanaApi"),
+    services.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsanaOptions>>(),
+    services.GetRequiredService<IAsanaAccessTokenProvider>(),
+    services.GetRequiredService<ProjectAccessService>()));
 builder.Services.AddScoped<IAsanaTaskService>(services =>
 {
     var options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<AsanaOptions>>().Value;

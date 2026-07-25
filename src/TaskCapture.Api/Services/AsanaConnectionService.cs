@@ -66,17 +66,17 @@ public sealed class AsanaConnectionService(
         }
 
         var connection = await FindConnectionAsync(cancellationToken);
-        var emailMatches = connection is not null && ConnectionEmailMatches(connection);
+        var policyMatches = connection is not null && ConnectionMatchesPolicy(connection);
         return connection is null
             ? new("PerUserOAuth", false, null, null, null, null, "Asanaへの接続が必要です。同じ会社メールのAsanaアカウントを使用してください。")
             : new(
                 "PerUserOAuth",
-                emailMatches,
+                policyMatches,
                 connection.AsanaUserName,
                 connection.AsanaUserEmail,
                 connection.WorkspaceName,
                 connection.ConnectedAtUtc,
-                emailMatches ? null : "会社メールとAsanaのメールを確認するため、Asanaへ接続し直してください。");
+                policyMatches ? null : "会社メールと社内ワークスペースを確認するため、Asanaへ接続し直してください。");
     }
 
     public string BuildAuthorizationUri()
@@ -194,16 +194,45 @@ public sealed class AsanaConnectionService(
     {
         var connection = await FindConnectionAsync(cancellationToken);
         if (connection is null) return;
-        connection.RevokedAtUtc = timeProvider.GetUtcNow();
-        connection.ProtectedAccessToken = string.Empty;
-        connection.ProtectedRefreshToken = null;
-        connection.UpdatedAtUtc = timeProvider.GetUtcNow();
+        var providerRevoked = await TryRevokeAtProviderAsync(connection, cancellationToken);
+        ClearConnection(connection);
         db.AuditLogs.Add(new AuditLog
         {
             UserId = connection.UserId,
             EventType = "AsanaDisconnected",
             EntityType = nameof(AsanaConnection),
             EntityId = connection.Id.ToString(),
+            Level = providerRevoked ? "Information" : "Warning",
+            Detail = providerRevoked
+                ? "The Asana authorization was revoked and local tokens were cleared."
+                : "Local Asana tokens were cleared, but provider revocation could not be confirmed.",
+            CorrelationId = correlationId
+        });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RevokeForUserAsync(
+        Guid userId,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        var connection = await db.AsanaConnections.SingleOrDefaultAsync(
+            item => item.UserId == userId && item.RevokedAtUtc == null,
+            cancellationToken);
+        if (connection is null) return;
+
+        var providerRevoked = await TryRevokeAtProviderAsync(connection, cancellationToken);
+        ClearConnection(connection);
+        db.AuditLogs.Add(new AuditLog
+        {
+            UserId = userId,
+            EventType = "AsanaDisconnectedByAdministrator",
+            EntityType = nameof(AsanaConnection),
+            EntityId = connection.Id.ToString(),
+            Level = providerRevoked ? "Information" : "Warning",
+            Detail = providerRevoked
+                ? "The Asana authorization was revoked during user deactivation."
+                : "Local Asana tokens were cleared during user deactivation; provider revocation could not be confirmed.",
             CorrelationId = correlationId
         });
         await db.SaveChangesAsync(cancellationToken);
@@ -225,6 +254,11 @@ public sealed class AsanaConnectionService(
         if (!ConnectionEmailMatches(connection))
         {
             throw new AsanaEmailMismatchException();
+        }
+        if (!ConnectionWorkspaceMatches(connection))
+        {
+            throw new InvalidOperationException(
+                "同じ会社メールで社内ワークスペースを利用できるAsanaへ接続し直してください。");
         }
         if (connection.TokenExpiresAtUtc is null
             || connection.TokenExpiresAtUtc > timeProvider.GetUtcNow().AddMinutes(2))
@@ -306,6 +340,50 @@ public sealed class AsanaConnectionService(
                 : null);
     }
 
+    private async Task<bool> TryRevokeAtProviderAsync(
+        AsanaConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (!_options.Mode.Equals("Api", StringComparison.OrdinalIgnoreCase)
+            || !_options.CredentialMode.Equals("PerUserOAuth", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(connection.ProtectedRefreshToken))
+        {
+            return true;
+        }
+
+        try
+        {
+            EnsureOAuthConfigured();
+            var client = httpClientFactory.CreateClient("AsanaOAuth");
+            using var response = await client.PostAsync(
+                "https://app.asana.com/-/oauth_revoke",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_id"] = _options.OAuth.ClientId!,
+                    ["client_secret"] = _options.OAuth.ClientSecret!,
+                    ["token"] = UnprotectToken(connection.ProtectedRefreshToken)
+                }),
+                cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ClearConnection(AsanaConnection connection)
+    {
+        connection.RevokedAtUtc = timeProvider.GetUtcNow();
+        connection.ProtectedAccessToken = string.Empty;
+        connection.ProtectedRefreshToken = null;
+        connection.UpdatedAtUtc = timeProvider.GetUtcNow();
+    }
+
     private async Task<AsanaProfile> GetProfileAsync(
         string accessToken,
         CancellationToken cancellationToken)
@@ -320,12 +398,19 @@ public sealed class AsanaConnectionService(
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         var data = document.RootElement.GetProperty("data");
-        var workspace = data.TryGetProperty("workspaces", out var workspaces)
-            ? workspaces.EnumerateArray()
-                .OrderByDescending(item =>
-                    item.GetProperty("gid").GetString() == _options.DefaultWorkspaceGid)
-                .FirstOrDefault()
-            : default;
+        var workspaceItems = data.TryGetProperty("workspaces", out var workspaces)
+            ? workspaces.EnumerateArray().ToArray()
+            : [];
+        var workspace = string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid)
+            ? workspaceItems.FirstOrDefault()
+            : workspaceItems.FirstOrDefault(item =>
+                item.GetProperty("gid").GetString() == _options.DefaultWorkspaceGid);
+        if (!string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid)
+            && workspace.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidOperationException(
+                "指定された社内Asanaワークスペースを利用できるアカウントで接続してください。");
+        }
         return new AsanaProfile(
             data.GetProperty("gid").GetString() ?? string.Empty,
             data.GetProperty("name").GetString() ?? "Asana利用者",
@@ -334,9 +419,19 @@ public sealed class AsanaConnectionService(
             workspace.ValueKind == JsonValueKind.Object ? workspace.GetProperty("name").GetString() : null);
     }
 
+    private bool ConnectionMatchesPolicy(AsanaConnection connection) =>
+        ConnectionEmailMatches(connection) && ConnectionWorkspaceMatches(connection);
+
     private bool ConnectionEmailMatches(AsanaConnection connection) =>
         !_options.OAuth.RequireMatchingEmail
         || EmailsMatch(currentUser.Email, connection.AsanaUserEmail);
+
+    private bool ConnectionWorkspaceMatches(AsanaConnection connection) =>
+        string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid)
+            || string.Equals(
+                connection.WorkspaceGid,
+                _options.DefaultWorkspaceGid,
+                StringComparison.Ordinal);
 
     private static bool EmailsMatch(string? companyEmail, string? asanaEmail)
     {
