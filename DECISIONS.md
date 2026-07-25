@@ -235,5 +235,5 @@
 
 - 日付: 2026-07-25
 - 状態: 採用・実装済み
-- 判断: launcherのHKCU自動起動と単一起動、API/launcher配布ZIP、SQL ServerのCHECKSUM付きbackup/VERIFYONLY、ready health、Windows GitHub Actionsを提供する。
+- 判断: launcherのHKCU自動起動と単一起動、API/launcher配布ZIP、SQL ServerのCHECKSUM付きbackup/VERIFYONLY、ready health、GitHub Actionsを提供する。CIは待ち時間の短いUbuntuランナーでAPI・React・Windows launcherをクロスターゲットbuildし、配布ZIPはWindows上のスクリプトで生成・検証する。
 - 理由: 開発PCで動くだけでなく、別PC・別SQL Serverへ安全に付け替え、同じ手順でビルド・テスト・バックアップできる状態を完成条件とするため。
