@@ -14,9 +14,18 @@ public sealed record AsanaConnectionStatus(
     string CredentialMode,
     bool Connected,
     string? AsanaUserName,
+    string? AsanaUserEmail,
     string? WorkspaceName,
     DateTimeOffset? ConnectedAtUtc,
     string? Message);
+
+public sealed class AsanaEmailMismatchException : InvalidOperationException
+{
+    public AsanaEmailMismatchException()
+        : base("会社メールと同じメールアドレスのAsanaアカウントで接続してください。")
+    {
+    }
+}
 
 public interface IAsanaAccessTokenProvider
 {
@@ -41,7 +50,7 @@ public sealed class AsanaConnectionService(
     {
         if (_options.Mode.Equals("Mock", StringComparison.OrdinalIgnoreCase))
         {
-            return new("Mock", true, "モック利用者", "モック環境", null, "Asanaへは送信しない確認モードです。");
+            return new("Mock", true, "モック利用者", currentUser.Email, "モック環境", null, "Asanaへは送信しない確認モードです。");
         }
 
         if (!_options.CredentialMode.Equals("PerUserOAuth", StringComparison.OrdinalIgnoreCase))
@@ -52,19 +61,22 @@ public sealed class AsanaConnectionService(
                 null,
                 null,
                 null,
+                null,
                 "管理者が設定したAsana接続を利用します。");
         }
 
         var connection = await FindConnectionAsync(cancellationToken);
+        var emailMatches = connection is not null && ConnectionEmailMatches(connection);
         return connection is null
-            ? new("PerUserOAuth", false, null, null, null, "Asanaへの接続が必要です。")
+            ? new("PerUserOAuth", false, null, null, null, null, "Asanaへの接続が必要です。同じ会社メールのAsanaアカウントを使用してください。")
             : new(
                 "PerUserOAuth",
-                true,
+                emailMatches,
                 connection.AsanaUserName,
+                connection.AsanaUserEmail,
                 connection.WorkspaceName,
                 connection.ConnectedAtUtc,
-                null);
+                emailMatches ? null : "会社メールとAsanaのメールを確認するため、Asanaへ接続し直してください。");
     }
 
     public string BuildAuthorizationUri()
@@ -125,6 +137,23 @@ public sealed class AsanaConnectionService(
             cancellationToken);
         var profile = await GetProfileAsync(token.AccessToken, cancellationToken);
         var user = await GetCurrentUserAsync(cancellationToken);
+        if (_options.OAuth.RequireMatchingEmail
+            && !EmailsMatch(user.Email ?? currentUser.Email, profile.UserEmail))
+        {
+            db.AuditLogs.Add(new AuditLog
+            {
+                UserId = user.Id,
+                EventType = "AsanaConnectionRejected",
+                EntityType = nameof(AsanaConnection),
+                EntityId = profile.UserGid,
+                Level = "Warning",
+                Detail = "The Asana account email did not match the signed-in company email.",
+                CorrelationId = correlationId
+            });
+            await db.SaveChangesAsync(cancellationToken);
+            throw new AsanaEmailMismatchException();
+        }
+
         var connection = await db.AsanaConnections
             .SingleOrDefaultAsync(item => item.UserId == user.Id, cancellationToken);
         if (connection is null)
@@ -135,6 +164,7 @@ public sealed class AsanaConnectionService(
 
         connection.AsanaUserGid = profile.UserGid;
         connection.AsanaUserName = profile.UserName;
+        connection.AsanaUserEmail = NormalizeEmail(profile.UserEmail);
         connection.WorkspaceGid = profile.WorkspaceGid;
         connection.WorkspaceName = profile.WorkspaceName;
         connection.ProtectedAccessToken = _tokenProtector.Protect(token.AccessToken);
@@ -192,6 +222,10 @@ public sealed class AsanaConnectionService(
         var connection = await FindConnectionAsync(cancellationToken)
             ?? throw new InvalidOperationException(
                 "Asanaへ接続してから登録してください。画面右上のアカウントから接続できます。");
+        if (!ConnectionEmailMatches(connection))
+        {
+            throw new AsanaEmailMismatchException();
+        }
         if (connection.TokenExpiresAtUtc is null
             || connection.TokenExpiresAtUtc > timeProvider.GetUtcNow().AddMinutes(2))
         {
@@ -279,7 +313,7 @@ public sealed class AsanaConnectionService(
         var client = httpClientFactory.CreateClient("AsanaOAuth");
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            "https://app.asana.com/api/1.0/users/me?opt_fields=gid,name,workspaces.gid,workspaces.name");
+            "https://app.asana.com/api/1.0/users/me?opt_fields=gid,name,email,workspaces.gid,workspaces.name");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var response = await client.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
@@ -295,9 +329,26 @@ public sealed class AsanaConnectionService(
         return new AsanaProfile(
             data.GetProperty("gid").GetString() ?? string.Empty,
             data.GetProperty("name").GetString() ?? "Asana利用者",
+            data.TryGetProperty("email", out var email) ? email.GetString() : null,
             workspace.ValueKind == JsonValueKind.Object ? workspace.GetProperty("gid").GetString() : null,
             workspace.ValueKind == JsonValueKind.Object ? workspace.GetProperty("name").GetString() : null);
     }
+
+    private bool ConnectionEmailMatches(AsanaConnection connection) =>
+        !_options.OAuth.RequireMatchingEmail
+        || EmailsMatch(currentUser.Email, connection.AsanaUserEmail);
+
+    private static bool EmailsMatch(string? companyEmail, string? asanaEmail)
+    {
+        var normalizedCompanyEmail = NormalizeEmail(companyEmail);
+        var normalizedAsanaEmail = NormalizeEmail(asanaEmail);
+        return normalizedCompanyEmail is not null
+            && normalizedAsanaEmail is not null
+            && string.Equals(normalizedCompanyEmail, normalizedAsanaEmail, StringComparison.Ordinal);
+    }
+
+    private static string? NormalizeEmail(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 
     private void EnsureOAuthConfigured()
     {
@@ -328,6 +379,7 @@ public sealed class AsanaConnectionService(
     private sealed record AsanaProfile(
         string UserGid,
         string UserName,
+        string? UserEmail,
         string? WorkspaceGid,
         string? WorkspaceName);
 }

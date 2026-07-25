@@ -21,8 +21,11 @@ flowchart LR
     Workflow --> Db["EF Core / SQL Server"]
     Organizer --> Rule["RuleBased organizer"]
     Organizer --> Gemini["Gemini organizer"]
+    Organizer --> Azure["Azure OpenAI organizer"]
     Gemini --> GeminiApi["Gemini API"]
+    Azure --> AzureApi["Azure OpenAI v1 API"]
     Gemini -. "未設定 / 失敗" .-> Rule
+    Azure -. "未設定 / 失敗" .-> Rule
     Asana --> Mock["Mock Asana"]
     Asana --> Real["Asana REST API"]
     Api --> OAuth["利用者別Asana OAuth / 暗号化token"]
@@ -40,7 +43,8 @@ flowchart LR
 | WBS import workflow | 登録前の行単位検証、担当者確認、親の日付集約、前回との差分判定、親優先登録、変更行更新、今回作成分の取り消し、失敗行の再開、取込履歴 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出と、明示された箇条書きのサブタスク化 |
 | Gemini organizer | GeminiのJSON Schema出力を親候補と0〜6件の実行可能なサブタスクへ変換し、未設定・失敗時はRuleBasedへフォールバック |
-| Asana services | Mock/PAT/利用者別OAuthの切り替え、暗号化token更新、workspaceユーザー名の安全なGID解決、project/section一覧取得、project認可、親子登録 |
+| Azure OpenAI organizer | Azure OpenAI v1のstrict JSON Schema出力をGeminiと共通の検証処理で候補へ変換し、未設定・失敗時はRuleBasedへフォールバック |
+| Asana services | Mock/PAT/利用者別OAuthの切り替え、会社メールとAsanaメールの一致確認、暗号化token更新、workspaceユーザー名の安全なGID解決、project/section一覧取得、project認可、親子登録 |
 | EF Core | SQL Server スキーマ、履歴、登録・監査データ |
 | Launcher | tray、グローバルホットキー、WebView2、クリップボード橋渡し、自動拡大、自動非表示、単一起動、Windowsログイン時自動起動 |
 
@@ -49,7 +53,7 @@ flowchart LR
 | Method | Path | 用途 |
 |---|---|---|
 | GET | `/api/health` | 起動状態、DB/AI/Asana モード確認（秘密情報なし） |
-| GET | `/api/health/ready` | DB・メール・Asana設定の起動準備確認 |
+| GET | `/api/health/ready` | DB・メール・Asana・AI・本番安全設定の起動準備確認 |
 | GET/POST | `/api/auth/me`, `/request-code`, `/verify-code`, `/logout` | 会社メール認証とsession管理 |
 | GET/POST/DELETE | `/api/asana/connection/*` | OAuth開始・callback・状態・解除 |
 | POST | `/api/task-requests/organize` | 入力保存と候補生成 |
@@ -96,7 +100,7 @@ erDiagram
     Users { guid Id PK string Email string ClientKey bool IsAdmin bool IsActive bool RestrictProjects }
     EmailLoginCodes { guid Id PK string Email string CodeHash datetime ExpiresAtUtc int FailedAttempts }
     UserSessions { guid Id PK guid UserId FK string UserAgentHash datetime ExpiresAtUtc datetime RevokedAtUtc }
-    AsanaConnections { guid Id PK guid UserId FK string AsanaUserGid string ProtectedAccessToken string ProtectedRefreshToken datetime TokenExpiresAtUtc }
+    AsanaConnections { guid Id PK guid UserId FK string AsanaUserGid string AsanaUserEmail string ProtectedAccessToken string ProtectedRefreshToken datetime TokenExpiresAtUtc }
     UserProjectPreferences { guid Id PK guid UserId FK string ProjectGid bool IsFavorite bool IsAllowed }
     TaskRequests { guid Id PK guid UserId FK string RawText string Source string Status datetime CreatedAtUtc }
     TaskCandidates { guid Id PK guid TaskRequestId FK string Title string Description string Assignee date StartDate date DueDate string AdvancedSettingsJson }
@@ -136,7 +140,7 @@ sequenceDiagram
 
 Productionでは `EmailCode + SMTP` だけを許可し、Development認証やMockメールでの起動を拒否する。APIはfallback policyで認証を既定必須とし、`/api/auth/me`、health、SPAだけを匿名許可する。利用者IDはHTTP headerから受け取らず、検証済みclaimsから `ICurrentUserContext` が作る安定キーを使う。
 
-Asana OAuth stateはData Protectionで改ざん防止し10分で失効する。callback後に取得したtokenを暗号化保存し、期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。
+Asana OAuth stateはData Protectionで改ざん防止し10分で失効する。callback後に `/users/me` のemailを取得し、ログイン中の会社メールと大文字小文字を無視して一致した場合だけtokenを暗号化保存する。不一致・email欠損・旧connectionは接続し直すまで使用しない。期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。
 
 ## 状態遷移
 
@@ -172,12 +176,13 @@ WBSのまとまりは `Ready / Invalid → Registering → Registered / Partiall
 - OAuth tokenはData Protection暗号文だけを保存し、鍵フォルダーをDBとは別に永続化・バックアップする。
 - task候補、通常履歴、WBS profile/batch、projectお気に入りはclaims由来の利用者へ必ずスコープする。
 - Gemini APIキーはUser Secretsまたは配備先Secret Storeだけから読み、入力本文・キー・SDK設定オブジェクトをログへ出さない。
+- Azure OpenAIのendpoint、deployment、APIキーはサーバー設定だけから読み、v1 chat completionsへstrict JSON Schemaを送る。APIキー・入力本文・応答本文をログへ出さない。
 - 画像・議事録・WBSファイルはブラウザー内で文字化または正規化し、ファイル本体をAPI/DBへ送信・保存しない。
 - API DTO の文字数・日付・JSON 形式を検証する。
 - `HttpClient` の Authorization は Asana 専用クライアントでのみ設定する。
 - ログは例外メッセージを必要最小限にし、認証ヘッダー/設定オブジェクトを出力しない。
-- MVP は限定ネットワーク内での利用を前提とする。外部公開前に組織認証、TLS 終端、レート制限を追加する。
+- ProductionはSQL Server、EmailCode + SSL SMTP、利用者別Asana OAuth + 同一メール、Azure OpenAI、HTTPS callback、永続Data Protection鍵が揃わないと起動を拒否する。全APIのrate limitとTLS終端を維持する。
 
 ## 実装根拠と引き継ぎ
 
-人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、実 SQL Server、通常入力とWBSのAsana限定projectへの担当者付き親子登録はローカル限定環境で実通信まで検証済みである。未確認のHTTPS配備と実端末 QAは inventory のリスクまたは次アクションへ分離している。
+人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、Azure OpenAI adapter、実 SQL Server、通常入力とWBSのAsana限定projectへの担当者付き親子登録、Asana/会社メール一致拒否は自動テスト済みである。未確認の本番Azure/SMTP/OAuth実通信、HTTPS配備と実端末 QAは inventory のリスクまたは次アクションへ分離している。

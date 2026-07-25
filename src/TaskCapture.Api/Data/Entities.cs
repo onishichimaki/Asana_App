@@ -56,6 +56,7 @@ public sealed class AsanaConnection
     public User User { get; set; } = null!;
     [MaxLength(64)] public string AsanaUserGid { get; set; } = string.Empty;
     [MaxLength(200)] public string AsanaUserName { get; set; } = string.Empty;
+    [MaxLength(320)] public string? AsanaUserEmail { get; set; }
     [MaxLength(64)] public string? WorkspaceGid { get; set; }
     [MaxLength(200)] public string? WorkspaceName { get; set; }
     [MaxLength(4_000)] public string ProtectedAccessToken { get; set; } = string.Empty;

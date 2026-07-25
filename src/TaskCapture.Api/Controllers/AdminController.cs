@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using TaskCapture.Api.Contracts;
 using TaskCapture.Api.Data;
+using TaskCapture.Api.Options;
 using TaskCapture.Api.Security;
 
 namespace TaskCapture.Api.Controllers;
@@ -13,11 +15,13 @@ namespace TaskCapture.Api.Controllers;
 public sealed class AdminController(
     TaskCaptureDbContext db,
     ICurrentUserContext currentUser,
+    IOptions<AsanaOptions> asanaOptions,
     TimeProvider timeProvider) : ControllerBase
 {
     [HttpGet("users")]
     public async Task<ActionResult<object>> GetUsers(CancellationToken cancellationToken)
     {
+        var requireMatchingEmail = asanaOptions.Value.OAuth.RequireMatchingEmail;
         var users = await db.Users
             .AsNoTracking()
             .OrderByDescending(user => user.LastLoginAtUtc)
@@ -32,7 +36,11 @@ public sealed class AdminController(
                 user.LastLoginAtUtc,
                 TaskCount = user.TaskRequests.Count,
                 AsanaConnected = user.AsanaConnection != null
-                    && user.AsanaConnection.RevokedAtUtc == null,
+                    && user.AsanaConnection.RevokedAtUtc == null
+                    && (!requireMatchingEmail
+                        || (user.Email != null
+                            && user.AsanaConnection.AsanaUserEmail != null
+                            && user.Email == user.AsanaConnection.AsanaUserEmail)),
                 AllowedProjects = user.ProjectPreferences
                     .Where(item => item.IsAllowed)
                     .Select(item => new { item.ProjectGid, item.ProjectName })

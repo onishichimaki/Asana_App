@@ -30,6 +30,11 @@ dotnet publish src/TaskCapture.Launcher/TaskCapture.Launcher.csproj `
     --self-contained false `
     --output $launcherOutput
 
+Copy-Item `
+    -LiteralPath 'src/TaskCapture.Api/appsettings.Production.example.json' `
+    -Destination (Join-Path $apiOutput 'appsettings.Production.example.json') `
+    -Force
+
 $exampleConfig = @'
 Task Capture 配布物
 
@@ -37,8 +42,9 @@ Task Capture 配布物
 2. launcher フォルダーを各Windows PCへ配布します。
 3. TASK_CAPTURE_WEB_URL にサーバーURLを設定して TaskCapture.Launcher.exe を起動します。
 4. タスクトレイの「Windowsログイン時に起動」で自動起動を設定できます。
+5. scripts/Test-TaskCaptureReadiness.ps1相当の確認で /api/health/ready がreadyになることを確認します。
 
-秘密情報は配布ZIPへ入れないでください。詳細はリポジトリの README.md を参照してください。
+appsettings.Production.example.jsonは項目確認用です。APIキー、OAuth Secret、SMTP Password、SQL接続文字列は環境変数またはSecret Storeに設定し、配布ZIPへ入れないでください。詳細はリポジトリの README.md を参照してください。
 '@
 Set-Content -LiteralPath (Join-Path $outputRoot 'はじめに.txt') -Value $exampleConfig -Encoding utf8
 

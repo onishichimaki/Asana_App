@@ -14,12 +14,21 @@ public sealed class TaskOrganizationOptions
     public string Mode { get; set; } = "RuleBased";
     public bool FallbackToRuleBased { get; set; } = true;
     public GeminiOptions Gemini { get; set; } = new();
+    public AzureOpenAIOptions AzureOpenAI { get; set; } = new();
 }
 
 public sealed class GeminiOptions
 {
     public string? ApiKey { get; set; }
     public string Model { get; set; } = "gemini-3.5-flash";
+    public int TimeoutSeconds { get; set; } = 20;
+}
+
+public sealed class AzureOpenAIOptions
+{
+    public string? Endpoint { get; set; }
+    public string? ApiKey { get; set; }
+    public string? DeploymentName { get; set; }
     public int TimeoutSeconds { get; set; } = 20;
 }
 
@@ -39,6 +48,7 @@ public sealed class AsanaOAuthOptions
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
+    public bool RequireMatchingEmail { get; set; } = true;
     public string[] Scopes { get; set; } =
     [
         "projects:read",

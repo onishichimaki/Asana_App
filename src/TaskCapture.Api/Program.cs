@@ -195,6 +195,12 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<RuleBasedTaskOrganizer>();
 builder.Services.AddScoped<IGeminiTaskClient, GoogleGeminiTaskClient>();
 builder.Services.AddScoped<GeminiTaskOrganizer>();
+builder.Services.AddHttpClient("AzureOpenAI", client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
+builder.Services.AddScoped<IAzureOpenAITaskClient, AzureOpenAITaskClient>();
+builder.Services.AddScoped<AzureOpenAITaskOrganizer>();
 builder.Services.AddScoped<ITaskOrganizer>(services =>
 {
     var options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<TaskOrganizationOptions>>().Value;
@@ -205,18 +211,26 @@ builder.Services.AddScoped<ITaskOrganizer>(services =>
         return ruleBased;
     }
 
-    if (!options.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+    ITaskOrganizer primary;
+    if (options.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+    {
+        primary = services.GetRequiredService<GeminiTaskOrganizer>();
+    }
+    else if (options.Mode.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+    {
+        primary = services.GetRequiredService<AzureOpenAITaskOrganizer>();
+    }
+    else
     {
         throw new InvalidOperationException($"Unsupported task organizer mode: {options.Mode}");
     }
 
-    var gemini = services.GetRequiredService<GeminiTaskOrganizer>();
     return options.FallbackToRuleBased
         ? new FallbackTaskOrganizer(
-            gemini,
+            primary,
             ruleBased,
             services.GetRequiredService<ILogger<FallbackTaskOrganizer>>())
-        : gemini;
+        : primary;
 });
 builder.Services.AddScoped<MockAsanaTaskService>();
 builder.Services.AddHttpClient("AsanaOAuth", client =>

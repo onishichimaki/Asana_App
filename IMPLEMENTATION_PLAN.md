@@ -46,6 +46,12 @@
 - [ ] 36. 本番SMTP、Asana OAuthアプリ、HTTPS URL、永続Data Protection鍵を配備先で設定
 - [ ] 37. iPhone/iPad実機と配備済みHTTPS URLで最終受入テスト
 
+## Phase 4: 本番安全性とAzure OpenAI
+
+- [x] 38. 会社メールとAsana profile emailの一致をOAuth callback・token利用時に強制し、旧connectionを再接続対象にする
+- [x] 39. Azure OpenAI v1 strict JSON Schema adapterとRuleBasedフォールバックを追加する
+- [x] 40. Production必須設定の安全側起動検証、ready診断、配布設定例、定期バックアップ登録、受入チェックリストを追加する
+
 ## 品質ゲート
 
 1. `dotnet build TaskCapture.sln` が成功する。
@@ -56,7 +62,7 @@
 6. レスポンシブ UI と launcher bridge をブラウザーで確認し、PC幅・390px幅で横スクロールがないことを検証する。
 7. 秘密情報がソースと生成 bundle に存在しないことを検索確認する。
 8. 議事録ファイル読込と日本語画像OCRをブラウザーで実動作確認する。
-9. GeminiはSDKをモック化した構造化変換・フォールバックテストを常時実行し、実通信は未露出のローカルSecretがある場合だけ行う。
+9. GeminiとAzure OpenAIは構造化変換・要求形式・フォールバックテストを常時実行し、実通信は未露出のSecretがある場合だけ行う。
 10. 親登録後に一部のサブタスク登録が失敗しても、再試行で親と成功済みサブタスクを重複作成しないことを確認する。
 11. 担当者名は完全一致または一意な部分一致だけを採用し、曖昧な名前を勝手に割り当てないことを確認する。
 12. WBSは親キー・階層レベル・階層列をfixtureで確認し、実SQLでprofile/batch/row永続化、実Asanaで親子登録、再送時の重複防止を確認する。
@@ -66,3 +72,5 @@
 16. プロジェクト制限を一覧・section/field・実登録のサーバー側で強制し、直接GID指定で回避できないことを確認する。
 17. Asana OAuth tokenが平文でDB・ログ・クライアントへ残らず、Data Protection鍵を永続化できることを確認する。
 18. CI、配布スクリプト、検証付きSQLバックアップを実行可能な状態に保つ。
+19. Asana OAuthはログイン会社メールとprofile emailが一致しない場合にtokenを保存・使用しないことを確認する。
+20. ProductionはSQL Server、SSL SMTP、利用者別Asana OAuth、Azure OpenAI、HTTPS callback、永続Data Protection鍵の不足を安全に拒否する。

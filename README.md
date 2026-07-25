@@ -7,10 +7,10 @@ PC・iPhone・iPadから、文章・貼り付け・音声・画像・議事録�
 - 会社メールへ届く6桁コードでログイン（パスワード保存なし）
 - 利用者ごとの履歴分離、利用停止、管理者設定、プロジェクト制限、監査ログ
 - テキスト、貼り付け、クリップボード、Web音声入力、日本語画像OCR、TXT/MD/CSV議事録
-- Geminiによるタイトル・説明・担当者・開始日・期限・サブタスク整理
-- Gemini未設定・失敗時のルールベース処理
+- GeminiまたはAzure OpenAIによるタイトル・説明・担当者・開始日・期限・サブタスク整理
+- 外部AI未設定・失敗時のルールベース処理
 - 登録前の確認・修正、Asanaプロジェクト検索・お気に入り・セクション選択
-- Asana PATまたは利用者別OAuth、担当者名のAsanaユーザー解決
+- Asana PATまたは利用者別OAuth、会社メールとの一致確認、担当者名のAsanaユーザー解決
 - レイアウトが異なるExcel/CSV WBSの列・開始行・階層マッピング
 - WBSマッピングの保存、プレビュー、重複防止、差分更新、失敗行再試行、作成分の取消
 - SQL Serverへの入力・候補・登録・認証・Asana接続・設定・監査履歴保存
@@ -62,6 +62,12 @@ dotnet user-secrets set "ConnectionStrings:TaskCapture" "Server=DESKTOP-RQ3T767;
 & ./scripts/Backup-TaskCapture.ps1 -ServerInstance "DESKTOP-RQ3T767" -Database TaskCapture -BackupDirectory "C:\TaskCaptureBackups"
 ```
 
+毎日2時のバックアップをWindowsタスクへ登録する例（ログイン中の利用者で実行）:
+
+```powershell
+& ./scripts/Install-TaskCaptureBackupTask.ps1 -ServerInstance "DESKTOP-RQ3T767" -Database TaskCapture -DailyAt "02:00"
+```
+
 ## 会社メールの個別アカウント
 
 Entra IDは不要です。会社メールへ確認コードを送り、メールアドレスごとに個別アカウントを作ります。パスワードは保持しません。
@@ -96,7 +102,21 @@ dotnet user-secrets set "TaskOrganization:Mode" "Gemini" --project $project
 Remove-Variable secureKey,key
 ```
 
-環境変数 `GEMINI_API_KEY` または `TaskOrganization__Gemini__ApiKey` でも設定できます。失敗時は既定でRuleBasedへ切り替わります。将来Azure OpenAIへ差し替える場合は `ITaskOrganizer` 実装を追加します。
+環境変数 `GEMINI_API_KEY` または `TaskOrganization__Gemini__ApiKey` でも設定できます。失敗時は既定でRuleBasedへ切り替わります。
+
+## Azure OpenAI
+
+本番ではAzure OpenAI v1 APIを利用できます。deployment名はAzure側で作成したモデルdeploymentを指定します。
+
+```text
+TaskOrganization__Mode=AzureOpenAI
+TaskOrganization__FallbackToRuleBased=true
+TaskOrganization__AzureOpenAI__Endpoint=https://YOUR-RESOURCE.openai.azure.com
+TaskOrganization__AzureOpenAI__DeploymentName=YOUR-DEPLOYMENT
+AZURE_OPENAI_API_KEY=...
+```
+
+APIキーはSecret Storeまたは環境変数だけに置きます。Azure OpenAIはstrict JSON Schemaで候補を返し、Geminiと同じ検証・RuleBasedフォールバックを通ります。
 
 ## Asana接続
 
@@ -121,10 +141,11 @@ Integration__Asana__CredentialMode=PerUserOAuth
 Integration__Asana__OAuth__ClientId=...
 Integration__Asana__OAuth__ClientSecret=...
 Integration__Asana__OAuth__RedirectUri=https://アプリURL/api/asana/connection/callback
+Integration__Asana__OAuth__RequireMatchingEmail=true
 DataProtection__KeysPath=C:\TaskCapture\DataProtectionKeys
 ```
 
-利用者は「接続・利用設定」から自分のAsanaを接続します。アクセストークンと更新トークンはASP.NET Core Data Protectionで暗号化してSQL Serverへ保存し、ブラウザーへ保持しません。各利用者には、そのAsanaアカウントで参照できるプロジェクトだけが表示されます。管理者はさらにアプリ側で登録先を限定できます。
+利用者は「接続・利用設定」から、ログイン中の会社メールと同じメールのAsanaを接続します。異なるメール・emailを取得できないアカウントは拒否し、tokenを保存しません。アクセストークンと更新トークンはASP.NET Core Data Protectionで暗号化してSQL Serverへ保存し、ブラウザーへ保持しません。各利用者には、そのAsanaアカウントで参照できるプロジェクトだけが表示されます。管理者はさらにアプリ側で登録先を限定できます。
 
 ## Excel / CSV WBS取込
 
@@ -183,14 +204,18 @@ Windows配布ZIP:
 
 `dist/TaskCapture-win-x64.zip` を生成します。秘密情報はZIPへ含めません。
 
+本番設定の項目一覧は `src/TaskCapture.Api/appsettings.Production.example.json` にあります。実値、APIキー、パスワード、接続文字列はこのファイルへ書かず、環境変数またはSecret Storeへ設定します。
+
 ## 運用確認
 
 - 稼働確認: `GET /api/health`
-- 起動準備確認: `GET /api/health/ready`
+- 起動準備確認: `GET /api/health/ready`（DB、SMTP、Asana、Azure OpenAI、暗号鍵。秘密値は返さない）
+- 配備先確認: `& ./scripts/Test-TaskCaptureReadiness.ps1 -BaseUrl "https://アプリURL"`
 - 管理画面: 利用者の有効/停止、管理者、プロジェクト限定
 - 管理API: `GET /api/admin/audit`
-- バックアップ: `scripts/Backup-TaskCapture.ps1`
+- バックアップ: `scripts/Backup-TaskCapture.ps1`、定期登録: `scripts/Install-TaskCaptureBackupTask.ps1`
 - OAuth/Data Protection鍵とSQL Serverバックアップは別の安全な場所へ保管
+- 実端末受入項目: `docs/ACCEPTANCE_TEST.md`
 
 ## 本番前に必要な外部設定
 
@@ -199,11 +224,13 @@ Windows配布ZIP:
 | SQL Server | InMemory可 | 接続文字列、バックアップ先 |
 | メール送信 | Mock可 | SMTPホスト・送信元・資格情報 |
 | Asana | Mock/PAT可 | OAuthアプリのClient ID/Secret/Callback URL |
-| AI | RuleBased可 | Geminiまたは将来のAzure OpenAI設定 |
+| AI | RuleBased/Gemini可 | Azure OpenAI endpoint・deployment・APIキー |
 | HTTPS | localhost HTTP可 | TLS証明書と公開URL |
 | Data Protection | Windowsプロファイル | 永続化・バックアップ対象の鍵フォルダー |
 
 秘密情報はクライアント、ログ、リポジトリ、配布ZIPへ入れません。
+
+Productionでは、SQL Server、SSL SMTP、利用者別Asana OAuthと同一メール確認、Azure OpenAI、HTTPS callback、永続Data Protection鍵が揃っていない場合は安全のため起動を拒否します。
 
 ## 文書
 
@@ -213,3 +240,4 @@ Windows配布ZIP:
 - [進捗](STATUS.md)
 - [設計判断](DECISIONS.md)
 - [開発エージェント向け規約](AGENTS.md)
+- [本番受入テスト](docs/ACCEPTANCE_TEST.md)
