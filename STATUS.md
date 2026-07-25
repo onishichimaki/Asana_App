@@ -56,7 +56,7 @@
 - Production必須設定の安全側起動チェック、秘密値を返さないready診断、配布設定例、定期backupタスク登録、実端末受入チェックリスト
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
 - `docs/architecture.html`、`docs/architecture.json`、`docs/architecture_readme.md`
-- GitHub `onishichimaki/Asana_App` の `main` へ PR #1〜#8をマージし、個別アカウント・運用機能をPR #9で公開
+- GitHub `onishichimaki/Asana_App` の `main` へ PR #1〜#10をマージし、本番認証・Azure OpenAI・運用仕上げをPR #11で公開
 - Asana PATをローカルUser Secretsへ保存し、既定workspace/project GIDを設定
 - 「仕事リクエスト」projectへ実API登録し、SQL履歴と二重登録防止を確認
 
