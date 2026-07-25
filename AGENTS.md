@@ -17,6 +17,7 @@
 - `src/TaskCapture.Launcher`: WinForms + WebView2 の Windows 常駐ランチャー
 - `tests/TaskCapture.Api.Tests`: API・ルール整理・WBS一括登録・永続化の主要テスト
 - `tests/fixtures`: 親キー・階層レベル・階層列のWBS取込fixture
+- `samples`: 人が画面確認に使う異なるレイアウトのExcel WBS
 - `docs`: 人間・AI 引き継ぎ用のアーキテクチャ資料
 
 ## 標準確認
@@ -42,6 +43,9 @@ SQL Server関連を変更した場合は、利用可能な検証用インスタ�
 
 - API の DTO へ DataAnnotations を設定し、自由入力の最大長を維持します。
 - Asana PAT、AI API キー、接続文字列をログへ出しません。
+- メール確認コード、session識別子、Asana OAuth tokenをログへ出しません。OAuth tokenはData Protection暗号文だけをDBへ保存します。
+- 本番の `Access:Mode=EmailCode`、SMTP、Asana OAuth、永続Data Protection鍵の安全側起動チェックを弱めません。
+- Controllerでクライアント由来の利用者IDを信用せず、`ICurrentUserContext` の所有者・管理者policy・`ProjectAccessService`を使用します。
 - `Integration:Asana:Mode=Mock` と `TaskOrganization:Mode=RuleBased` を常に動作可能に保ち、Gemini失敗時のフォールバックを壊しません。
 - Gemini APIキーはUser Secrets、`TaskOrganization__Gemini__ApiKey`、または `GEMINI_API_KEY` から読み、テスト・ログ・例外詳細・文書へ実値を残しません。
 - DB スキーマ変更時は EF Core migration、`ARCHITECTURE.md`、`docs/architecture.json` を同期します。

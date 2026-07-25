@@ -136,11 +136,11 @@ public sealed class WbsImportApiTests : IAsyncLifetime
         var batch = await response.Content.ReadFromJsonAsync<WbsImportBatchResponse>();
         Assert.NotNull(batch);
         Assert.Equal("Invalid", batch.Status);
-        Assert.Contains(batch.Rows[0].ValidationErrors, error => error.Contains("親キー", StringComparison.Ordinal));
+        Assert.Contains(batch.Rows[0].ValidationErrors, error => error.Contains("親の行", StringComparison.Ordinal));
 
         var csv = await _client.GetStringAsync($"/api/wbs-imports/batches/{batch.Id}/errors.csv");
         Assert.Contains("親がないタスク", csv, StringComparison.Ordinal);
-        Assert.Contains("親キー", csv, StringComparison.Ordinal);
+        Assert.Contains("親の行", csv, StringComparison.Ordinal);
     }
 
     [Fact]

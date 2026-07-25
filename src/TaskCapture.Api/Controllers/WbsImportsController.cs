@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
 using TaskCapture.Api.Contracts;
+using TaskCapture.Api.Security;
 using TaskCapture.Api.Services;
 
 namespace TaskCapture.Api.Controllers;
 
 [ApiController]
 [Route("api/wbs-imports")]
-public sealed class WbsImportsController(WbsImportService service) : ControllerBase
+public sealed class WbsImportsController(
+    WbsImportService service,
+    ICurrentUserContext currentUser) : ControllerBase
 {
     [HttpGet("profiles")]
     public async Task<ActionResult<IReadOnlyList<WbsImportProfileResponse>>> GetProfiles(
@@ -63,6 +66,17 @@ public sealed class WbsImportsController(WbsImportService service) : ControllerB
         return CreatedAtAction(nameof(GetBatch), new { batchId = result.Id }, result);
     }
 
+    [HttpGet("column-names")]
+    public async Task<ActionResult<IReadOnlyList<WbsColumnAliasResponse>>> GetColumnNames(
+        CancellationToken cancellationToken) =>
+        Ok(await service.GetColumnAliasesAsync(ClientKey(), cancellationToken));
+
+    [HttpGet("batches")]
+    public async Task<ActionResult<IReadOnlyList<WbsImportBatchSummaryResponse>>> GetHistory(
+        [FromQuery] int take = 20,
+        CancellationToken cancellationToken = default) =>
+        Ok(await service.GetHistoryAsync(ClientKey(), take, cancellationToken));
+
     [HttpGet("batches/{batchId:guid}")]
     public async Task<ActionResult<WbsImportBatchResponse>> GetBatch(
         Guid batchId,
@@ -72,10 +86,12 @@ public sealed class WbsImportsController(WbsImportService service) : ControllerB
     [HttpPost("batches/{batchId:guid}/register")]
     public async Task<ActionResult<WbsImportBatchResponse>> RegisterBatch(
         Guid batchId,
+        [FromBody] WbsRegisterBatchRequest? request,
         CancellationToken cancellationToken)
     {
         var result = await service.RegisterBatchAsync(
             batchId,
+            request ?? new WbsRegisterBatchRequest(),
             ClientKey(),
             HttpContext.TraceIdentifier,
             cancellationToken);
@@ -84,6 +100,16 @@ public sealed class WbsImportsController(WbsImportService service) : ControllerB
             : StatusCode(StatusCodes.Status207MultiStatus, result);
     }
 
+    [HttpPost("batches/{batchId:guid}/undo")]
+    public async Task<ActionResult<WbsImportBatchResponse>> UndoBatch(
+        Guid batchId,
+        CancellationToken cancellationToken) =>
+        Ok(await service.UndoBatchAsync(
+            batchId,
+            ClientKey(),
+            HttpContext.TraceIdentifier,
+            cancellationToken));
+
     [HttpGet("batches/{batchId:guid}/errors.csv")]
     public async Task<IActionResult> DownloadErrors(Guid batchId, CancellationToken cancellationToken)
     {
@@ -91,6 +117,5 @@ public sealed class WbsImportsController(WbsImportService service) : ControllerB
         return File(content, "text/csv; charset=utf-8", $"wbs-import-{batchId:N}-errors.csv");
     }
 
-    private string ClientKey() =>
-        Request.Headers["X-TaskCapture-Client"].FirstOrDefault() ?? "local-device";
+    private string ClientKey() => currentUser.ClientKey;
 }

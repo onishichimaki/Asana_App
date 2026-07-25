@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { requestJson } from './api'
 
-type ProjectOption = { gid: string; name: string }
+type ProjectOption = { gid: string; name: string; isFavorite: boolean }
 type SectionOption = { gid: string; name: string }
 type ProjectCatalog = { defaultProjectGid: string | null; projects: ProjectOption[] }
 
@@ -10,6 +10,7 @@ type Props = {
   sectionGid: string
   onChange: (projectGid: string, sectionGid: string) => void
   onResolvedLabel?: (label: { projectName: string | null; sectionName: string | null }) => void
+  onEffectiveProjectGid?: (projectGid: string) => void
   disabled?: boolean
   idPrefix: string
 }
@@ -19,6 +20,7 @@ export default function AsanaDestinationPicker({
   sectionGid,
   onChange,
   onResolvedLabel,
+  onEffectiveProjectGid,
   disabled = false,
   idPrefix,
 }: Props) {
@@ -26,6 +28,8 @@ export default function AsanaDestinationPicker({
   const [sections, setSections] = useState<SectionOption[]>([])
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [sectionsLoading, setSectionsLoading] = useState(false)
+  const [projectSearch, setProjectSearch] = useState('')
+  const [favoriteBusy, setFavoriteBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -40,7 +44,7 @@ export default function AsanaDestinationPicker({
       .catch(() => {
         if (!active) return
         setCatalog({ defaultProjectGid: null, projects: [] })
-        setError('プロジェクト一覧を取得できません。必要ならGIDを直接入力できます。')
+        setError('プロジェクト一覧を取得できません。必要なら番号を直接入力できます。')
       })
       .finally(() => {
         if (active) setProjectsLoading(false)
@@ -49,6 +53,10 @@ export default function AsanaDestinationPicker({
   }, [])
 
   const effectiveProjectGid = projectGid || catalog?.defaultProjectGid || ''
+
+  useEffect(() => {
+    onEffectiveProjectGid?.(effectiveProjectGid)
+  }, [effectiveProjectGid, onEffectiveProjectGid])
 
   useEffect(() => {
     let active = true
@@ -74,6 +82,14 @@ export default function AsanaDestinationPicker({
     const gid = projectGid || catalog?.defaultProjectGid
     return catalog?.projects.find(project => project.gid === gid)?.name
   }, [catalog, projectGid])
+  const selectedProject = catalog?.projects.find(project => project.gid === effectiveProjectGid)
+  const visibleProjects = useMemo(() => {
+    const term = projectSearch.trim().toLocaleLowerCase('ja-JP')
+    if (!term) return catalog?.projects ?? []
+    return (catalog?.projects ?? []).filter(project =>
+      project.name.toLocaleLowerCase('ja-JP').includes(term)
+      || project.gid.includes(term))
+  }, [catalog, projectSearch])
   const sectionName = useMemo(
     () => sections.find(section => section.gid === sectionGid)?.name,
     [sectionGid, sections])
@@ -88,27 +104,61 @@ export default function AsanaDestinationPicker({
   const unknownProject = projectGid && !catalog?.projects.some(project => project.gid === projectGid)
   const unknownSection = sectionGid && !sections.some(section => section.gid === sectionGid)
 
+  const toggleFavorite = async () => {
+    if (!selectedProject) return
+    setFavoriteBusy(true)
+    try {
+      await requestJson(`/api/asana/projects/${selectedProject.gid}/favorite`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          isFavorite: !selectedProject.isFavorite,
+          projectName: selectedProject.name,
+        }),
+      })
+      setCatalog(current => current ? {
+        ...current,
+        projects: current.projects
+          .map(project => project.gid === selectedProject.gid
+            ? { ...project, isFavorite: !project.isFavorite }
+            : project)
+          .sort((left, right) =>
+            Number(right.isFavorite) - Number(left.isFavorite)
+            || left.name.localeCompare(right.name, 'ja-JP')),
+      } : current)
+    } catch {
+      setError('お気に入りを更新できませんでした。')
+    } finally {
+      setFavoriteBusy(false)
+    }
+  }
+
   return (
     <div className="destination-picker">
       <div className="field">
         <label htmlFor={`${idPrefix}-project`}>Asanaプロジェクト</label>
-        <select
-          id={`${idPrefix}-project`}
-          value={projectGid}
-          disabled={disabled || projectsLoading}
-          onChange={event => onChange(event.target.value, '')}
-        >
-          <option value="">
-            {projectsLoading
-              ? 'プロジェクトを読み込み中…'
-              : projectName
-                ? `既定を使用（${projectName}）`
-                : '既定のプロジェクトを使用'}
-          </option>
-          {unknownProject && <option value={projectGid}>現在の設定（{projectGid}）</option>}
-          {catalog?.projects.map(project =>
-            <option key={project.gid} value={project.gid}>{project.name}</option>)}
-        </select>
+        {(catalog?.projects.length ?? 0) > 8 && <input className="project-search" value={projectSearch} placeholder="プロジェクト名を検索" onChange={event => setProjectSearch(event.target.value)} />}
+        <div className="project-select-row">
+          <select
+            id={`${idPrefix}-project`}
+            value={projectGid}
+            disabled={disabled || projectsLoading}
+            onChange={event => onChange(event.target.value, '')}
+          >
+            <option value="">
+              {projectsLoading
+                ? 'プロジェクトを読み込み中…'
+                : projectName
+                  ? `既定を使用（${projectName}）`
+                  : '既定のプロジェクトを使用'}
+            </option>
+            {unknownProject && <option value={projectGid}>現在の設定（{projectGid}）</option>}
+            {selectedProject && projectSearch && !visibleProjects.some(project => project.gid === selectedProject.gid)
+              && <option value={selectedProject.gid}>{selectedProject.isFavorite ? '★ ' : ''}{selectedProject.name}</option>}
+            {visibleProjects.map(project =>
+              <option key={project.gid} value={project.gid}>{project.isFavorite ? '★ ' : ''}{project.name}</option>)}
+          </select>
+          {selectedProject && <button type="button" className={`favorite-button ${selectedProject.isFavorite ? 'active' : ''}`} disabled={disabled || favoriteBusy} onClick={() => void toggleFavorite()} aria-label={selectedProject.isFavorite ? 'お気に入りから外す' : 'お気に入りに追加'} title={selectedProject.isFavorite ? 'お気に入りから外す' : 'お気に入りに追加'}>{selectedProject.isFavorite ? '★' : '☆'}</button>}
+        </div>
         <small>タスクを追加するプロジェクトを名前で選べます。</small>
       </div>
 
@@ -130,10 +180,10 @@ export default function AsanaDestinationPicker({
 
       {error && <p className="destination-warning">! {error}</p>}
       <details className="destination-manual">
-        <summary>一覧にない場合はGIDを直接入力</summary>
+        <summary>一覧にない場合は番号を直接入力</summary>
         <div className="advanced-grid">
           <div className="field">
-            <label htmlFor={`${idPrefix}-project-gid`}>プロジェクトGID</label>
+            <label htmlFor={`${idPrefix}-project-gid`}>プロジェクト番号</label>
             <input
               id={`${idPrefix}-project-gid`}
               inputMode="numeric"
@@ -143,7 +193,7 @@ export default function AsanaDestinationPicker({
             />
           </div>
           <div className="field">
-            <label htmlFor={`${idPrefix}-section-gid`}>セクションGID</label>
+            <label htmlFor={`${idPrefix}-section-gid`}>セクション番号</label>
             <input
               id={`${idPrefix}-section-gid`}
               inputMode="numeric"

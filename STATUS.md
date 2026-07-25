@@ -1,15 +1,21 @@
 # STATUS
 
-最終更新: 2026-07-24
+最終更新: 2026-07-25
 
 ## 現在地
 
-- フェーズ: 可変レイアウトWBS取込を含むMVP完成
-- MVP 判定: 通常入力、Gemini/RuleBased、親子候補編集、可変レイアウトWBS、担当者名解決、SQL Server、Asana API/Mockの主要経路が完成。
+- フェーズ: 個別アカウント・運用機能を含むMVP実装完了、本番外部設定待ち
+- MVP 判定: 通常入力、Gemini/RuleBased、可変WBS、会社メール個別アカウント、利用者別Asana OAuth、権限管理、SQL Server、Windowsランチャー、配布・バックアップ・CIのコードと主要自動テストが完成。
 
 ## 完了
 
 - メイリオUI優先で説明・余白を抑えたReactレスポンシブ1画面（入力 → 整理 → 確認・修正 → 登録）
+- 会社メール確認コード、PBKDF2ハッシュ、HttpOnly Cookie session、ログアウト、送信・試行回数制限
+- 認証必須API、利用者ごとの通常/WBS履歴分離、停止利用者の拒否、管理者policy
+- 利用者別Asana OAuth、Data Protection token暗号化、refresh、接続状態・解除UI
+- 利用者管理画面（利用停止、管理者、登録先project限定）と監査閲覧API
+- Asanaプロジェクトの名前検索・お気に入り、通常登録・WBS共通のサーバー側project認可
+- 通常タスク履歴100件のタスク名・内容検索と状態絞り込み
 - 通常貼り付け、Clipboard API、Web Speech API 日本語音声入力と非対応フォールバック
 - UTF-8/Shift_JISの `.txt/.md/.csv` 議事録読込
 - JPEG/PNG/WebPの選択・撮影・貼り付けと、Tesseract.jsによるブラウザー内日本語OCR
@@ -35,15 +41,18 @@
 - 最大5,000行の編集可能プレビュー、対象外指定、日付・親不足・重複キー・循環参照の事前検証
 - PCの一覧表とスマートフォンの1タスク1カードを切り替えるレスポンシブ確認画面、読取結果へ戻る操作
 - WBS server dry-run、一括登録、行hash重複防止、部分失敗からの再開、エラーCSV
-- EF Core の11テーブル、index/relationship、InitialCreate / AddTaskCandidateSubtasks / AddAssigneeResolutionAudit / AddWbsImports / AddTaskStartDates SQL Server migration
+- EF Core の16テーブルと8 migration（認証session、暗号化Asana接続、project設定、WBS履歴を含む）
 - Development/Test の InMemory provider 差し替え
 - .NET User Secrets によるローカルSQL Server設定と環境変数による配備先差し替え
 - 再実行可能な `scripts/Test-SqlServerIntegration.ps1`
 - WinForms + WebView2 tray launcher、Ctrl+Shift+A、clipboard bridge、登録後自動非表示、標準の最小化・閉じるボタン
 - ランチャー通常起動時の入力画面表示、`--background` tray起動、`--clipboard` 起動
+- Windowsランチャーから1件登録とExcel・CSVまとめ登録を切り替え、まとめ登録時は確認しやすい大きさへ自動拡大
+- launcherの単一起動と、trayから切替可能なWindowsログイン時自動起動
+- GitHub Actions CI、API/launcher配布ZIPスクリプト、SQL backup/VERIFYONLYスクリプト、ready health
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
 - `docs/architecture.html`、`docs/architecture.json`、`docs/architecture_readme.md`
-- GitHub `onishichimaki/Asana_App` の `main` へ PR #1・#2 をマージし、実連携検証更新を PR #3 で公開
+- GitHub `onishichimaki/Asana_App` の `main` へ PR #1〜#8をマージし、個別アカウント・運用機能をPR #9で公開
 - Asana PATをローカルUser Secretsへ保存し、既定workspace/project GIDを設定
 - 「仕事リクエスト」projectへ実API登録し、SQL履歴と二重登録防止を確認
 
@@ -53,10 +62,12 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 36件成功、失敗0
+- xUnit: 46件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
-- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 5 migration と必須11テーブルを確認
-- 実SQL結合: 通常候補とWBS行の開始日・期限、親子整理、通常Mock親子登録、WBSテンプレート・親子行・Mock登録、API再起動後の履歴再取得を確認（`1|1|1|1|1|2|2|1|1|1|2`）
+- SQL Server `DESKTOP-RQ3T767/TaskCapture`: 8 migration と必須16テーブルを確認
+- 実SQL結合: 通常候補とWBS行の開始日・期限、親子整理、通常Mock親子登録、WBSテンプレート・親子行・Mock登録、API再起動後の履歴再取得を確認（`1|1|1|1|1|2|4|1|1|1|2`）
+- 認証API: 未認証401、会社外メール拒否、誤コード拒否、session作成、logout後401、監査保存、管理画面で付与した管理者権限の再ログイン後維持を確認
+- project認可: お気に入り保存、許可一覧絞り込み、未許可section APIの403を確認
 - NuGet / npm dependency vulnerability scan: 既知脆弱性0
 - `dotnet format --verify-no-changes`: 成功
 - Launcher実機smoke: 通常起動で `Task Capture` ウィンドウhandle生成・応答を確認、trayプロセス維持
@@ -80,6 +91,7 @@
 - API再疎通: SQL Server / Gemini / Asana APIをhealthで確認し、Gemini実通信でタイトル・担当者・期限を再抽出
 - compact UI QA: launcher相当520px幅とiPhone相当390px幅で横スクロール・console警告なし
 - Launcher実画面QA: 初期操作が1画面内に収まり、標準タイトルバーの最小化「－」と閉じる「×」を確認
+- Launcher Excel・CSV QA: Windowsアプリ内で「Excel・CSVをまとめて登録」を選択し、ファイル選択画面への切替と自動拡大を実画面で確認
 - サブタスクUI QA: launcher相当520px幅とiPhone相当390px幅で4件の編集欄を確認し、横スクロール・console警告なし
 - アーキテクチャ資料: JSON構文、HTML構文、全 `source_files` の存在確認に成功
 - WBS UI QA: 親キー・階層レベル・階層列fixtureをそれぞれ4件へ変換し、深度 `0→1→2→1`、エラー0、横スクロール・console警告なしを確認
@@ -93,15 +105,25 @@
 - WBS初見性QA: 30行Excelで通常画面を7つの平易な読取項目へ要約し、「識別キー」「親キー」「階層レベル」「階層列」は詳細設定を開くまで表示されないことを確認
 - WBSレスポンシブQA: PC幅は30件を横スクロールなしの一覧表、iPhone相当390pxは1タスク1カードで表示し、ページ全体・previewとも横スクロールなし、console警告なし
 - WBS戻る操作QA: 確認画面から読取結果へ戻るとstep 2へ復帰し、再度30件・エラー0件の確認画面を生成できることを確認
+- WBS一般形式QA: 専用の取込対象・階層レベル列を持たない金沢旅行WBSで、見出し6行目と `大項目 / 中項目 / 小項目` を自動判定。30作業行から親1件・中項目7件・小項目30件の38件を生成し、server dry-runでエラー0件、横スクロール・console警告なしを確認
+- WBS再取込: 行ごとに「新しく作る・変更あり・前回と同じ」を判定し、変更行の上書き有無を登録前に選択可能
+- WBS安全な取り消し: 今回新しく作ったタスクだけを子から順に元へ戻し、既存・上書きタスクを残す
+- WBS担当者確認: 登録前チェックで担当者の解決結果と未解決警告を表示
+- WBS日程: 子タスクの最も早い開始日と最も遅い期限を親へ自動反映
+- WBS追加項目: 進み具合・優先度・予定時間・予定費用をAsanaの追加項目または説明へ送信
+- WBS大量行UI: 検索、表示条件、親子開閉、100件ごとの表示、表示中の一括選択
+- WBS学習・履歴: 保存した会社独自列名の再利用と、直近20件の取込履歴表示
+- SQL実結合再確認: migration適用、React配信、通常入力、WBS親子登録、API再起動後の履歴再取得が成功
 
-## 未完了 / 外部待ち
+## 未完了 / 外部設定待ち
 
 - Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
 - 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
-- HTTPS配備先のSecret Store、組織認証、TLS、rate limit、運用監視は未設定。
+- 本番SMTP、Asana OAuthアプリのClient ID/Secret/Callback URL、HTTPS公開URL、永続Data Protection鍵は配備先未設定。
+- 本番の定期バックアップ実行主体・監視通知先は運用環境決定後に設定が必要。
 
 ## 次に必要な作業
 
-1. HTTPS の iPhone/iPad と Windows 実機で、画像・議事録・音声・WBSを含む短い受入テストを実施する。
-2. 外部公開する場合は配備先Secret Store、組織認証、TLS、rate limit、運用監視を追加する。
-3. 運用実績を見て必要になった場合だけ、WBSの依存関係・custom field・取込単位のロールバック支援を追加する。
+1. 本番SMTP、Asana OAuthアプリ、HTTPS、Secret Store、Data Protection鍵フォルダーを設定する。
+2. HTTPS の iPhone/iPad と配布版Windows launcherで、ログイン・画像・音声・WBS・Asana実登録の受入テストを実施する。
+3. SQL backupスクリプトをタスクスケジューラ等へ登録し、監視通知先を決める。
