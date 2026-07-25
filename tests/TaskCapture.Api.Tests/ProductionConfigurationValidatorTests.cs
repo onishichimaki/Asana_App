@@ -11,10 +11,15 @@ public sealed class ProductionConfigurationValidatorTests
     [Fact]
     public void Production_ReturnsNoIssuesWhenEveryRequiredIntegrationIsConfigured()
     {
+        var absoluteKeysPath = Path.Combine(
+            Path.GetPathRoot(Environment.CurrentDirectory)
+                ?? Path.DirectorySeparatorChar.ToString(),
+            "TaskCapture",
+            "Keys");
         var configuration = CreateConfiguration(new Dictionary<string, string?>
         {
             ["ConnectionStrings:TaskCapture"] = "Server=sql;Database=TaskCapture;Integrated Security=true",
-            ["DataProtection:KeysPath"] = "C:\\TaskCapture\\Keys"
+            ["DataProtection:KeysPath"] = absoluteKeysPath
         });
 
         var issues = ProductionConfigurationValidator.GetBlockingIssues(
