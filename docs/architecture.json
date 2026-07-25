@@ -1,6 +1,6 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "会社メールの個別アカウントでログインし、メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込んでAsanaへ登録するMVP。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "会社メールの個別アカウントでログインし、同じメールのAsanaアカウントだけをOAuth接続する登録専用アプリ。メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込み、RuleBased、Gemini、Azure OpenAIで整理する。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
@@ -24,10 +24,10 @@
       "id": "api_host",
       "name": "API Host",
       "type": "ASP.NET Core Web API",
-      "responsibility": "設定、DI、CORS、例外処理、静的SPA配信、Controller routingを構成する。",
+      "responsibility": "設定、DI、CORS、例外処理、静的SPA配信、Controller routingを構成し、本番のSQL・SMTP・Asana OAuth・Azure OpenAI・永続暗号鍵が安全に設定されているか起動時に検証する。",
       "main_inputs": ["HTTP JSON", "environment variables", "appsettings"],
       "main_outputs": ["HTTP JSON", "Problem Details", "SPA assets"],
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs", "src/TaskCapture.Api/appsettings.json"]
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs", "src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs", "src/TaskCapture.Api/appsettings.json", "src/TaskCapture.Api/appsettings.Production.example.json"]
     },
     {
       "id": "email_auth_and_authorization",
@@ -42,9 +42,9 @@
       "id": "asana_user_connection",
       "name": "Per-user Asana Connection",
       "type": "OAuth and token provider",
-      "responsibility": "PATまたは利用者別OAuthを切り替え、OAuth state検証、token暗号化、refresh、解除、利用者別project制限を提供する。",
-      "main_inputs": ["OAuth code/state", "Data Protection keys", "Asana OAuth settings"],
-      "main_outputs": ["protected token row", "Bearer access token", "connection status"],
+      "responsibility": "PATまたは利用者別OAuthを切り替え、OAuth state検証、ログイン中の会社メールとAsana profile emailの厳格一致、token暗号化、refresh、解除、利用者別project制限を提供する。",
+      "main_inputs": ["signed-in company email", "OAuth code/state", "Asana profile email", "Data Protection keys", "Asana OAuth settings"],
+      "main_outputs": ["email-verified protected token row", "Bearer access token", "connection status", "safe mismatch rejection"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
     },
     {
@@ -60,10 +60,10 @@
       "id": "task_organizer",
       "name": "Task Organizer",
       "type": "Replaceable domain service",
-      "responsibility": "設定でRuleBasedまたはGeminiを選び、入力からタイトル、内容、担当者、期限、サブタスク候補を抽出する。Gemini失敗時は既定でRuleBasedへフォールバックする。",
+      "responsibility": "設定でRuleBased、Gemini、Azure OpenAIを選び、入力からタイトル、内容、担当者、期限、サブタスク候補を抽出する。外部AIの未設定・失敗時は既定でRuleBasedへフォールバックする。",
       "main_inputs": ["raw text", "current Japan date"],
       "main_outputs": ["OrganizedTask"],
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/StructuredTaskOrganization.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs"]
     },
     {
       "id": "gemini_task_organizer",
@@ -73,6 +73,15 @@
       "main_inputs": ["raw text", "current Japan date", "server-side Gemini settings"],
       "main_outputs": ["structured JSON", "OrganizedTask", "safe provider exception"],
       "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs"]
+    },
+    {
+      "id": "azure_openai_task_organizer",
+      "name": "Azure OpenAI Task Organizer",
+      "type": "AI provider adapter",
+      "responsibility": "Azure OpenAI v1 chat completionsへ厳格なJSON Schemaを送り、Geminiと共通のJST基準日・最大長・nullable項目検証でOrganizedTaskへ変換する。キーはサーバーSecretだけから読む。",
+      "main_inputs": ["raw text", "current Japan date", "Azure endpoint", "deployment name", "server-side API key"],
+      "main_outputs": ["structured JSON", "OrganizedTask", "safe provider exception"],
+      "source_files": ["src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs", "src/TaskCapture.Api/Services/StructuredTaskOrganization.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "tests/TaskCapture.Api.Tests/AzureOpenAITaskOrganizerTests.cs"]
     },
     {
       "id": "asana_integration",
@@ -87,10 +96,10 @@
       "id": "persistence",
       "name": "Persistence",
       "type": "EF Core / SQL Server",
-      "responsibility": "認証、暗号化Asana接続、権限、通常入力、WBSの親子候補・行別登録結果を含む16テーブルと8 migrationを管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
+      "responsibility": "認証、メール一致確認済みの暗号化Asana接続、権限、通常入力、WBSの親子候補・行別登録結果を含む16テーブルと9 migrationを管理する。Development/Testでは同じモデルをInMemory providerで実行できる。",
       "main_inputs": ["entities", "connection configuration"],
       "main_outputs": ["SQL Server rows", "migration DDL"],
-      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs", "src/TaskCapture.Api/Data/Migrations/20260724095907_NormalizeLegacyWbsRows.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs"]
+      "source_files": ["src/TaskCapture.Api/Data/TaskCaptureDbContext.cs", "src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs", "src/TaskCapture.Api/Data/Migrations/20260724095907_NormalizeLegacyWbsRows.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs", "src/TaskCapture.Api/Data/Migrations/20260725220328_AddAsanaUserEmail.cs"]
     },
     {
       "id": "windows_launcher",
@@ -248,8 +257,8 @@
       {
         "id": "asana_connections",
         "name": "AsanaConnections",
-        "description": "利用者のAsana user/workspaceとData Protectionで暗号化したaccess/refresh token、期限を保持する。",
-        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs"]
+        "description": "利用者のAsana user/workspace/emailとData Protectionで暗号化したaccess/refresh token、期限を保持する。会社メールと一致しないtokenは保存・使用しない。",
+        "source_files": ["src/TaskCapture.Api/Data/Entities.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Data/Migrations/20260725220328_AddAsanaUserEmail.cs"]
       },
       {
         "id": "user_project_preferences",
@@ -429,10 +438,17 @@
       "source_files": ["src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/TaskCapture.Api.csproj", "README.md"]
     },
     {
+      "id": "azure_openai_api",
+      "name": "Azure OpenAI API",
+      "type": "HTTPS AI API",
+      "description": "Azure OpenAI v1 chat completionsをapi-key認証で呼び、strict JSON Schemaで親候補とサブタスクを返す。endpoint、deployment、キーはサーバー設定だけに置き、失敗時はRuleBasedへフォールバックできる。",
+      "source_files": ["src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs", "src/TaskCapture.Api/Services/StructuredTaskOrganization.cs", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "src/TaskCapture.Api/appsettings.Production.example.json"]
+    },
+    {
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
-      "description": "PATまたは利用者別OAuthでworkspaceのproject/sectionを取得する。OAuth tokenは暗号化保存・サーバーrefreshし、利用者のAsana権限とアプリ側許可の両方を満たすprojectだけへ登録する。",
+      "description": "PATまたは利用者別OAuthでworkspaceのproject/sectionを取得する。OAuth時はAsana profile emailと会社メールを一致確認してからtokenを暗号化保存・サーバーrefreshし、利用者のAsana権限とアプリ側許可の両方を満たすprojectだけへ登録する。",
       "source_files": ["src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/appsettings.json"]
     },
     {
@@ -446,8 +462,8 @@
       "id": "sql_server",
       "name": "SQL Server",
       "type": "Relational database",
-      "description": "EF Core SqlServer providerと8 migrationで認証、暗号化Asana接続、権限、通常入力、WBS、監査を16テーブルへ保存する。",
-      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs", "src/TaskCapture.Api/Data/Migrations/20260724095907_NormalizeLegacyWbsRows.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs"]
+      "description": "EF Core SqlServer providerと9 migrationで認証、メール照合済みの暗号化Asana接続、権限、通常入力、WBS、監査を16テーブルへ保存する。",
+      "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Data/Migrations/20260717215931_InitialCreate.cs", "src/TaskCapture.Api/Data/Migrations/20260720091144_AddTaskCandidateSubtasks.cs", "src/TaskCapture.Api/Data/Migrations/20260723212527_AddAssigneeResolutionAudit.cs", "src/TaskCapture.Api/Data/Migrations/20260724043532_AddWbsImports.cs", "src/TaskCapture.Api/Data/Migrations/20260724062625_AddTaskStartDates.cs", "src/TaskCapture.Api/Data/Migrations/20260724092530_ImproveWbsImportWorkflow.cs", "src/TaskCapture.Api/Data/Migrations/20260724095907_NormalizeLegacyWbsRows.cs", "src/TaskCapture.Api/Data/Migrations/20260725074322_AddEmailAccountsAndAsanaConnections.cs", "src/TaskCapture.Api/Data/Migrations/20260725220328_AddAsanaUserEmail.cs"]
     },
     {
       "id": "browser_capture_apis",
@@ -476,18 +492,18 @@
     {
       "id": "asana_oauth_flow",
       "name": "利用者別Asana接続",
-      "inputs": ["authenticated user", "OAuth authorization code", "protected state"],
-      "processing": ["state and expiry validation", "token exchange", "Asana profile/workspace read", "Data Protection token encryption", "server-side refresh", "project permission filtering"],
-      "outputs": ["encrypted AsanaConnection", "user-visible connection status", "authorized Bearer token"],
+      "inputs": ["authenticated company email", "OAuth authorization code", "protected state"],
+      "processing": ["state and expiry validation", "token exchange", "Asana profile email/workspace read", "case-insensitive company/Asana email equality check", "mismatch rejection audit", "Data Protection token encryption", "server-side refresh", "project permission filtering"],
+      "outputs": ["email-verified encrypted AsanaConnection", "user-visible connection status", "authorized Bearer token", "safe mismatch message"],
       "source_files": ["src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
     },
     {
       "id": "organize_flow",
       "name": "入力から候補",
       "inputs": ["text / paste / minutes / image OCR / voice / clipboard"],
-      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased or Gemini structured extraction", "AI task decomposition when useful", "RuleBased fallback on configured AI failure", "TaskCandidate, TaskCandidateSubtasks and AuditLog save"],
+      "processing": ["browser text extraction", "React validation", "POST organize", "TaskRequest save", "RuleBased, Gemini or Azure OpenAI structured extraction", "AI task decomposition when useful", "RuleBased fallback on configured AI failure", "TaskCandidate, TaskCandidateSubtasks and AuditLog save"],
       "outputs": ["editable parent candidate", "editable ordered subtasks"],
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/TaskCapture.Api/Services/TaskWorkflowService.cs", "src/TaskCapture.Api/Services/TaskOrganizer.cs", "src/TaskCapture.Api/Services/StructuredTaskOrganization.cs", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs", "src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs"]
     },
     {
       "id": "registration_flow",
@@ -534,6 +550,12 @@
       "source_files": ["src/TaskCapture.Api/TaskCapture.Api.csproj", "src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs"]
     },
     {
+      "id": "azure_openai_v1_http",
+      "name": "Azure OpenAI v1 REST",
+      "description": "ASP.NET Core HttpClientからAzure OpenAI v1 chat completionsとstrict JSON Schemaを利用する。追加SDKへ結合せずITaskOrganizer境界へ閉じ込める。",
+      "source_files": ["src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs", "src/TaskCapture.Api/Program.cs"]
+    },
+    {
       "id": "webview2_sdk",
       "name": "Microsoft.Web.WebView2",
       "description": "WinForms launcherのWebView2 controlとweb message API。",
@@ -550,8 +572,8 @@
     {
       "id": "local_integrations_only",
       "name": "実連携検証はローカル限定",
-      "description": "DESKTOP-RQ3T767のSQL Serverでは16テーブルと8 migration、Asana限定projectでは通常入力とWBSの実登録まで成功済み。本番SMTP、OAuthアプリ、HTTPS、Secret Store、運用監視は配備先未設定。",
-      "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json"]
+      "description": "DESKTOP-RQ3T767のSQL Serverでは16テーブルと9 migration、Asana限定projectでは通常入力とWBSの実登録まで成功済み。Azure OpenAI adapterと本番設定診断は自動テスト済みだが、本番SMTP、OAuthアプリ、Azure resource、HTTPS、Secret Store、運用監視は配備先未設定。",
+      "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json", "src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs"]
     },
     {
       "id": "speech_compatibility",
@@ -588,14 +610,14 @@
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",
-      "description": "配備先のSecret StoreへSQL接続、SMTP、Asana OAuth Client Secretを設定し、HTTPS URLと永続Data Protection鍵、定期backup、監視通知を有効にする。",
-      "source_files": ["README.md", "ARCHITECTURE.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs"]
+      "description": "配備先のSecret StoreへSQL接続、SMTP、Asana OAuth Client Secret、Azure OpenAI設定を登録し、HTTPS URLと永続Data Protection鍵、定期backup、監視通知を有効にする。ready診断で全項目を確認する。",
+      "source_files": ["README.md", "ARCHITECTURE.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs", "scripts/Test-TaskCaptureReadiness.ps1", "scripts/Install-TaskCaptureBackupTask.ps1"]
     },
     {
       "id": "device_qa",
       "name": "実端末QA",
       "description": "iPhone/iPadのHTTPS URLでカメラOCR・音声・clipboard・WBSファイル選択・360px UI、Windowsでtray/hotkey/autocloseを確認する。",
-      "source_files": ["REQUIREMENTS.md", "src/TaskCapture.Launcher/LauncherApplicationContext.cs"]
+      "source_files": ["REQUIREMENTS.md", "docs/ACCEPTANCE_TEST.md", "src/TaskCapture.Launcher/LauncherApplicationContext.cs"]
     }
   ]
 }

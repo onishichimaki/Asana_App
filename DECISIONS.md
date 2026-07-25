@@ -244,3 +244,24 @@
 - 状態: 採用・実装済み
 - 判断: Windowsランチャーは現在操作中の画面の作業領域右下へ16pxの余白で表示する。ランチャー内だけは登録方法と4つの入力方法を各1段にし、短い「一括登録」表記と小さめのメニュー文字を使う。通常のスマートフォンWebでは押しやすい2段配置を維持する。
 - 理由: 常駐ランチャーは作業中の画面を遮らず、起動直後にスクロールせず入力からAI整理まで操作できることを優先するため。
+
+## D-036: Asana OAuthは会社メールと同じemailだけを許可する
+
+- 日付: 2026-07-26
+- 状態: 採用・実装済み
+- 判断: 利用者別OAuth callbackでAsana `/users/me` のemailを取得し、ログイン中の会社メールとtrim・小文字化後に一致する場合だけtokenを暗号化保存する。不一致、email欠損、emailを保存していない旧connectionは拒否または再接続対象とし、監査ログへメール実値を残さない。
+- 理由: 会社メールAでログインした利用者がAsanaアカウントBを接続すると、履歴の所有者とAsana権限の主体がずれるため。OAuth stateの利用者紐付けに加え、外部identity自体の一致を安全に確認する。
+
+## D-037: 本番AIはAzure OpenAI v1を追加し、既存の安全なフォールバックを共有する
+
+- 日付: 2026-07-26
+- 状態: 採用・実装済み
+- 判断: `TaskOrganization:Mode=AzureOpenAI`を追加し、HTTPS endpoint、deployment名、サーバー側APIキーでAzure OpenAI v1 chat completionsを呼ぶ。strict JSON Schemaを使い、Geminiと同じJST基準日・文字数・nullable項目・サブタスク検証へ通す。未設定・timeout・API失敗時は既定でRuleBasedへフォールバックする。
+- 理由: 最終配備先をAzureへ移してもReact、DB、workflowを変更せず、外部AI障害時もタスク登録を継続するため。REST v1を小さいadapterへ閉じ込め、provider SDKの更新影響を増やさない。
+
+## D-038: Productionは必要な外部設定が揃わない限り起動しない
+
+- 日付: 2026-07-26
+- 状態: 採用・実装済み
+- 判断: ProductionではSQL Server、EmailCode + SSL SMTP、利用者別Asana OAuth + 同一メール必須 + HTTPS callback、Azure OpenAI、絶対パスの永続Data Protection鍵を起動時に検証する。不足時は安全側で起動を拒否し、ready endpointは秘密値を返さず不足分だけを示す。Development/TestのMock・RuleBasedフォールバックは維持する。
+- 理由: 配備後にメールが届かない、共有PATや別Asana identityで登録する、再起動でOAuth tokenを復号できない等の事故を、利用開始前に検出するため。

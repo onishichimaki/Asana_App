@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaskCapture.Api.Data;
 using TaskCapture.Api.Options;
+using TaskCapture.Api.Services;
 
 namespace TaskCapture.Api.Controllers;
 
@@ -15,6 +16,7 @@ public sealed class HealthController(
     IOptions<TaskOrganizationOptions> organization,
     IOptions<AsanaOptions> asana,
     IOptions<AccessOptions> access,
+    IConfiguration configuration,
     TaskCaptureDbContext db) : ControllerBase
 {
     [AllowAnonymous]
@@ -27,7 +29,9 @@ public sealed class HealthController(
         organizer = organization.Value.Mode,
         organizerModel = organization.Value.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
             ? organization.Value.Gemini.Model
-            : null,
+            : organization.Value.Mode.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase)
+                ? organization.Value.AzureOpenAI.DeploymentName
+                : null,
         organizerFallback = organization.Value.FallbackToRuleBased,
         asana = asana.Value.Mode,
         asanaCredentialMode = asana.Value.CredentialMode,
@@ -51,7 +55,26 @@ public sealed class HealthController(
             || (access.Value.AllowedEmailDomains.Length > 0
                 && (access.Value.EmailCode.Delivery.Mode.Equals("Mock", StringComparison.OrdinalIgnoreCase)
                     || !string.IsNullOrWhiteSpace(access.Value.EmailCode.Delivery.Host)));
-        var ready = databaseReady && asanaReady && emailReady;
+        var organizerPrimaryReady = organization.Value.Mode.Equals("RuleBased", StringComparison.OrdinalIgnoreCase)
+            || (organization.Value.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase)
+                && (!string.IsNullOrWhiteSpace(organization.Value.Gemini.ApiKey)
+                    || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GEMINI_API_KEY"))))
+            || (organization.Value.Mode.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(organization.Value.AzureOpenAI.Endpoint)
+                && !string.IsNullOrWhiteSpace(organization.Value.AzureOpenAI.DeploymentName)
+                && (!string.IsNullOrWhiteSpace(organization.Value.AzureOpenAI.ApiKey)
+                    || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY"))));
+        var organizerReady = organizerPrimaryReady || organization.Value.FallbackToRuleBased;
+        var productionIssues = ProductionConfigurationValidator.GetBlockingIssues(
+            environment,
+            configuration,
+            database.Value,
+            organization.Value,
+            asana.Value,
+            access.Value);
+        var productionConfigurationReady = productionIssues.Count == 0;
+        var ready = databaseReady && asanaReady && emailReady && organizerReady
+            && productionConfigurationReady;
         return StatusCode(
             ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable,
             new
@@ -60,6 +83,10 @@ public sealed class HealthController(
                 database = databaseReady,
                 asana = asanaReady,
                 email = emailReady,
+                organizer = organizerReady,
+                organizerPrimary = organizerPrimaryReady,
+                productionConfiguration = productionConfigurationReady,
+                configurationIssues = productionIssues,
                 timestampUtc = DateTimeOffset.UtcNow
             });
     }

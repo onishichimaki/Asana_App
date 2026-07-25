@@ -41,6 +41,10 @@ public sealed class AsanaConnectionController(AsanaConnectionService connectionS
                 cancellationToken);
             return Redirect("/?asana=connected");
         }
+        catch (AsanaEmailMismatchException)
+        {
+            return Redirect("/?asana=email-mismatch");
+        }
         catch
         {
             return Redirect("/?asana=error");

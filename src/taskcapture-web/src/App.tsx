@@ -32,7 +32,20 @@ const maxImageBytes = 10 * 1024 * 1024
 const maxMinutesBytes = 2 * 1024 * 1024
 const acceptedMinutesExtensions = ['.txt', '.md', '.csv']
 const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp']
-const isLauncher = new URLSearchParams(window.location.search).get('launcher') === '1'
+const initialQuery = new URLSearchParams(window.location.search)
+const isLauncher = initialQuery.get('launcher') === '1'
+const asanaCallback = initialQuery.get('asana')
+const asanaCallbackNotice = asanaCallback
+  ? {
+      kind: asanaCallback === 'connected' ? 'success' : 'error',
+      text: ({
+        connected: 'Asanaとの接続が完了しました。',
+        'email-mismatch': '会社メールと同じメールアドレスのAsanaアカウントで接続してください。',
+        cancelled: 'Asanaとの接続をキャンセルしました。',
+        error: 'Asanaとの接続を完了できませんでした。もう一度お試しください。',
+      } as Record<string, string>)[asanaCallback] ?? 'Asanaとの接続を完了できませんでした。もう一度お試しください。',
+    }
+  : null
 
 function toDraft(candidate: TaskCandidate): CandidateDraft {
   return { ...candidate, subtasksText: candidate.subtasks.join('\n'), tagsText: candidate.tags.join(', '), customFieldsText: Object.keys(candidate.customFields).length ? JSON.stringify(candidate.customFields, null, 2) : '' }
@@ -80,7 +93,7 @@ type AppProps = {
 }
 
 function App({ account, onLogout }: AppProps) {
-  const [mode, setMode] = useState<'capture' | 'wbs' | 'history' | 'settings'>('capture')
+  const [mode, setMode] = useState<'capture' | 'wbs' | 'history' | 'settings'>(asanaCallback ? 'settings' : 'capture')
   const [rawText, setRawText] = useState('')
   const [source, setSource] = useState<InputSource>('text')
   const [candidate, setCandidate] = useState<CandidateDraft | null>(null)
@@ -102,6 +115,11 @@ function App({ account, onLogout }: AppProps) {
   useEffect(() => {
     requestJson<HealthResponse>('/api/health').then(setHealth).catch(() => setHealth(null))
     inputRef.current?.focus()
+    if (asanaCallback) {
+      const cleanedUrl = new URL(window.location.href)
+      cleanedUrl.searchParams.delete('asana')
+      window.history.replaceState({}, '', `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`)
+    }
   }, [])
 
   useEffect(() => {
@@ -338,6 +356,8 @@ function App({ account, onLogout }: AppProps) {
         <button type="button" className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
         <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>接続・利用設定</button>
       </nav>
+
+      {asanaCallbackNotice && <div className={asanaCallbackNotice.kind === 'success' ? 'wbs-message' : 'error-message'} role={asanaCallbackNotice.kind === 'success' ? 'status' : 'alert'}>{asanaCallbackNotice.text}</div>}
 
       {mode === 'settings'
         ? <SettingsPanel account={account} />

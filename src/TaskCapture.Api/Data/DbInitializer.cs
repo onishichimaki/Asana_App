@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaskCapture.Api.Options;
+using TaskCapture.Api.Services;
 
 namespace TaskCapture.Api.Data;
 
@@ -17,8 +18,22 @@ public static class DbInitializer
         var asanaOptions = scope.ServiceProvider.GetRequiredService<IOptions<AsanaOptions>>().Value;
         var accessOptions = scope.ServiceProvider.GetRequiredService<IOptions<AccessOptions>>().Value;
         var environment = scope.ServiceProvider.GetRequiredService<IHostEnvironment>();
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
         ValidateAccessConfiguration(accessOptions, environment);
+        ValidateTaskOrganizationConfiguration(organizationOptions);
+        var productionIssues = ProductionConfigurationValidator.GetBlockingIssues(
+            environment,
+            configuration,
+            databaseOptions,
+            organizationOptions,
+            asanaOptions,
+            accessOptions);
+        if (productionIssues.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "本番設定が未完了です: " + string.Join(' ', productionIssues));
+        }
 
         if (db.Database.IsRelational())
         {
@@ -57,6 +72,38 @@ public static class DbInitializer
             "The active sign-in method. Email codes and sessions are stored only as protected values.",
             cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void ValidateTaskOrganizationConfiguration(TaskOrganizationOptions options)
+    {
+        if (options.Mode.Equals("RuleBased", StringComparison.OrdinalIgnoreCase)
+            || options.Mode.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!options.Mode.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Unsupported task organizer mode: {options.Mode}");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.AzureOpenAI.Endpoint)
+            || string.IsNullOrWhiteSpace(options.AzureOpenAI.DeploymentName))
+        {
+            if (options.FallbackToRuleBased)
+            {
+                return;
+            }
+            throw new InvalidOperationException(
+                "AzureOpenAI mode requires TaskOrganization:AzureOpenAI:Endpoint and DeploymentName.");
+        }
+
+        if (!Uri.TryCreate(options.AzureOpenAI.Endpoint, UriKind.Absolute, out var endpoint)
+            || !endpoint.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "TaskOrganization:AzureOpenAI:Endpoint must be an absolute HTTPS URL.");
+        }
     }
 
     private static void ValidateAccessConfiguration(

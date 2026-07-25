@@ -6,6 +6,7 @@ type AsanaStatus = {
   credentialMode: string
   connected: boolean
   asanaUserName: string | null
+  asanaUserEmail: string | null
   workspaceName: string | null
   connectedAtUtc: string | null
   message: string | null
@@ -114,7 +115,7 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
     <div className="settings-page">
       <section className="panel settings-card">
         <div className="section-heading">
-          <div><h2>Asanaとの接続</h2><p>登録先は、接続したAsanaアカウントで見られるプロジェクトから選べます。</p></div>
+          <div><h2>Asanaとの接続</h2><p>会社メールと同じAsanaアカウントを接続します。登録先は、そのアカウントで見られるプロジェクトから選べます。</p></div>
           <span className={`settings-status ${asana?.connected ? 'connected' : ''}`}>{asana?.connected ? '接続済み' : '未接続'}</span>
         </div>
         {!asana
@@ -122,12 +123,13 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
           : <>
               {asana.asanaUserName && <dl className="settings-detail">
                 <div><dt>Asana利用者</dt><dd>{asana.asanaUserName}</dd></div>
+                {asana.asanaUserEmail && <div><dt>Asanaメール</dt><dd>{asana.asanaUserEmail}</dd></div>}
                 <div><dt>ワークスペース</dt><dd>{asana.workspaceName || '自動選択'}</dd></div>
               </dl>}
               {asana.message && <p className="settings-muted">{asana.message}</p>}
               {asana.credentialMode === 'PerUserOAuth' && (asana.connected
                 ? <button type="button" className="secondary-button" disabled={busy === 'asana'} onClick={() => void disconnectAsana()}>Asana接続を解除</button>
-                : <button type="button" className="primary-button" disabled={busy === 'asana'} onClick={() => void connectAsana()}>{busy === 'asana' ? '準備しています…' : '自分のAsanaを接続'}</button>)}
+                : <button type="button" className="primary-button" disabled={busy === 'asana'} onClick={() => void connectAsana()}>{busy === 'asana' ? '準備しています…' : '同じメールのAsanaを接続'}</button>)}
             </>}
       </section>
 
