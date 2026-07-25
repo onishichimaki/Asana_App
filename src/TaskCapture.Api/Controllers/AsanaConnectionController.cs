@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaskCapture.Api.Services;
 
 namespace TaskCapture.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/asana/connection")]
 public sealed class AsanaConnectionController(AsanaConnectionService connectionService) : ControllerBase
 {

@@ -121,26 +121,32 @@ erDiagram
 
 ```mermaid
 sequenceDiagram
+    participant Admin as 管理者
     participant U as 利用者
     participant W as React
     participant A as API
     participant M as SMTP
     participant D as SQL Server
-    U->>W: 会社メール入力
+    Admin->>A: 会社メールを事前登録
+    A->>D: 有効な利用者を保存
+    U->>W: 事前登録済み会社メールを入力
     W->>A: request-code
+    A->>D: 事前登録・利用中を確認
     A->>D: hash済みコード・期限を保存
     A->>M: 6桁コード送信
     U->>W: コード入力
     W->>A: verify-code
     A->>D: 利用者・session・監査を保存
     A-->>W: HttpOnly Cookie
-    W->>A: タスク/WBS/設定 API
-    A->>D: session有効性・所有者・project許可を確認
+    W->>A: 同じメールのAsanaをOAuth接続
+    A->>D: 一致確認済み暗号化tokenを保存
+    W->>A: タスク/WBS/履歴 API
+    A->>D: session・Asana接続・所有者・project許可を確認
 ```
 
-Productionでは `EmailCode + SMTP` だけを許可し、Development認証やMockメールでの起動を拒否する。APIはfallback policyで認証を既定必須とし、`/api/auth/me`、health、SPAだけを匿名許可する。利用者IDはHTTP headerから受け取らず、検証済みclaimsから `ICurrentUserContext` が作る安定キーを使う。
+Productionでは `EmailCode + SMTP` だけを許可し、Development認証やMockメールでの起動を拒否する。`Access:AdminEmails` は最初の管理者だけをサーバー設定で許可するbootstrapで、以後は管理APIの事前登録済みUsersだけへcodeを送る。APIはfallback policyで認証と有効な同一メールAsana接続を既定必須とし、`/api/auth/me`、health、SPAだけを匿名許可、Asana接続APIだけを接続前にも許可する。利用者IDはHTTP headerから受け取らず、検証済みclaimsから `ICurrentUserContext` が作る安定キーを使う。
 
-Asana OAuth stateはData Protectionで改ざん防止し10分で失効する。callback後に `/users/me` のemailを取得し、ログイン中の会社メールと大文字小文字を無視して一致した場合だけtokenを暗号化保存する。不一致・email欠損・旧connectionは接続し直すまで使用しない。期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。
+Asana OAuth stateはData Protectionで改ざん防止し10分で失効する。callback後に `/users/me` のemailとworkspacesを取得し、ログイン中の会社メールと大文字小文字を無視して一致し、かつ `DefaultWorkspaceGid` の社内workspaceに所属する場合だけtokenを暗号化保存する。不一致・email欠損・workspace非所属・旧connectionは接続し直すまで使用しない。期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。利用停止時は全sessionを失効し、AsanaへOAuth解除を要求したうえで、結果にかかわらずローカルtokenを消去する。
 
 ## 状態遷移
 

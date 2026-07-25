@@ -46,6 +46,22 @@ public sealed class AsanaConnectionServiceTests
     }
 
     [Fact]
+    public async Task ConnectAsync_RejectsAccountOutsideConfiguredCompanyWorkspace()
+    {
+        await using var fixture = CreateFixture(
+            "employee@example.co.jp",
+            "employee@example.co.jp",
+            "different-workspace");
+
+        var state = GetState(fixture.Service.BuildAuthorizationUri());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Service.ConnectAsync("authorization-code", state, "correlation", CancellationToken.None));
+
+        Assert.Contains("社内Asanaワークスペース", error.Message);
+        Assert.Empty(await fixture.Db.AsanaConnections.ToListAsync());
+    }
+
+    [Fact]
     public async Task GetAccessTokenAsync_RequiresReconnectForLegacyConnectionWithoutEmail()
     {
         await using var fixture = CreateFixture("employee@example.co.jp", "employee@example.co.jp");
@@ -66,7 +82,28 @@ public sealed class AsanaConnectionServiceTests
         Assert.Contains("接続し直して", status.Message);
     }
 
-    private static Fixture CreateFixture(string companyEmail, string asanaEmail)
+    [Fact]
+    public async Task DisconnectAsync_RevokesProviderAuthorizationAndErasesLocalTokens()
+    {
+        await using var fixture = CreateFixture("employee@example.co.jp", "employee@example.co.jp");
+        var state = GetState(fixture.Service.BuildAuthorizationUri());
+        await fixture.Service.ConnectAsync("authorization-code", state, "connect", CancellationToken.None);
+
+        await fixture.Service.DisconnectAsync("disconnect", CancellationToken.None);
+
+        var connection = await fixture.Db.AsanaConnections.SingleAsync();
+        Assert.NotNull(connection.RevokedAtUtc);
+        Assert.Empty(connection.ProtectedAccessToken);
+        Assert.Null(connection.ProtectedRefreshToken);
+        Assert.True(fixture.Handler.RevokeRequested);
+        Assert.Equal("refresh-token", fixture.Handler.RevokedToken);
+        Assert.False((await fixture.Service.GetStatusAsync(CancellationToken.None)).Connected);
+    }
+
+    private static Fixture CreateFixture(
+        string companyEmail,
+        string asanaEmail,
+        string asanaWorkspaceGid = "workspace-1")
     {
         var dbOptions = new DbContextOptionsBuilder<TaskCaptureDbContext>()
             .UseInMemoryDatabase($"AsanaConnection-{Guid.NewGuid():N}")
@@ -97,7 +134,7 @@ public sealed class AsanaConnectionServiceTests
                 RequireMatchingEmail = true
             }
         });
-        var handler = new AsanaOAuthHandler(asanaEmail);
+        var handler = new AsanaOAuthHandler(asanaEmail, asanaWorkspaceGid);
         var service = new AsanaConnectionService(
             db,
             currentUser,
@@ -105,7 +142,7 @@ public sealed class AsanaConnectionServiceTests
             new EphemeralDataProtectionProvider(),
             new TestHttpClientFactory(handler),
             TimeProvider.System);
-        return new Fixture(db, user, service);
+        return new Fixture(db, user, service, handler);
     }
 
     private static string GetState(string authorizationUri)
@@ -133,12 +170,28 @@ public sealed class AsanaConnectionServiceTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    private sealed class AsanaOAuthHandler(string asanaEmail) : HttpMessageHandler
+    private sealed class AsanaOAuthHandler(string asanaEmail, string asanaWorkspaceGid) : HttpMessageHandler
     {
+        public bool RevokeRequested { get; private set; }
+        public string? RevokedToken { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            if (request.RequestUri?.AbsolutePath.EndsWith("/oauth_revoke", StringComparison.Ordinal) == true)
+            {
+                RevokeRequested = true;
+                var form = request.Content!.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                RevokedToken = form.Split('&', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(part => part.Split('=', 2))
+                    .Where(pair => pair.Length == 2)
+                    .Where(pair => Uri.UnescapeDataString(pair[0]) == "token")
+                    .Select(pair => Uri.UnescapeDataString(pair[1].Replace('+', ' ')))
+                    .SingleOrDefault();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            }
+
             var json = request.Method == HttpMethod.Post
                 ? """{"access_token":"access-token","refresh_token":"refresh-token","expires_in":3600}"""
                 : System.Text.Json.JsonSerializer.Serialize(new
@@ -148,7 +201,7 @@ public sealed class AsanaConnectionServiceTests
                         gid = "asana-user",
                         name = "Employee",
                         email = asanaEmail,
-                        workspaces = new[] { new { gid = "workspace-1", name = "Company" } }
+                        workspaces = new[] { new { gid = asanaWorkspaceGid, name = "Company" } }
                     }
                 });
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -161,7 +214,8 @@ public sealed class AsanaConnectionServiceTests
     private sealed record Fixture(
         TaskCaptureDbContext Db,
         User User,
-        AsanaConnectionService Service) : IAsyncDisposable
+        AsanaConnectionService Service,
+        AsanaOAuthHandler Handler) : IAsyncDisposable
     {
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }

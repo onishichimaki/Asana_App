@@ -28,15 +28,19 @@ type AdminUser = {
 
 type UserDraft = AdminUser & { projectsText: string }
 
-export default function SettingsPanel({ account }: { account: AuthAccount }) {
+export default function SettingsPanel({ account, onConnectionChanged }: { account: AuthAccount; onConnectionChanged: (connected: boolean) => void }) {
   const [asana, setAsana] = useState<AsanaStatus | null>(null)
   const [users, setUsers] = useState<UserDraft[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [newEmail, setNewEmail] = useState('')
+  const [newDisplayName, setNewDisplayName] = useState('')
+  const [newIsAdmin, setNewIsAdmin] = useState(false)
 
   const load = useCallback(async () => {
     const status = await requestJson<AsanaStatus>('/api/asana/connection')
     setAsana(status)
+    onConnectionChanged(status.connected)
     if (account.isAdmin) {
       const result = await requestJson<AdminUser[]>('/api/admin/users')
       setUsers(result.map(user => ({
@@ -46,7 +50,7 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
           .join('\n'),
       })))
     }
-  }, [account.isAdmin])
+  }, [account.isAdmin, onConnectionChanged])
 
   useEffect(() => {
     load().catch(error => setMessage(error instanceof Error ? error.message : '設定を読み込めませんでした。'))
@@ -82,6 +86,10 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
     setUsers(current => current.map(user => user.id === id ? { ...user, ...patch } : user))
 
   const saveUser = async (user: UserDraft) => {
+    if (!user.isActive && !window.confirm(`${user.displayName}さんを利用停止しますか？\n現在のログインとAsana接続も解除されます。`)) {
+      await load()
+      return
+    }
     setBusy(user.id)
     setMessage(null)
     try {
@@ -106,6 +114,27 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
       await load()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '利用設定を保存できませんでした。')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const preRegisterUser = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy('new-user')
+    setMessage(null)
+    try {
+      await requestJson('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify({ email: newEmail.trim(), displayName: newDisplayName.trim() || null, isAdmin: newIsAdmin }),
+      })
+      setMessage(`${newEmail.trim()} を利用登録しました。`)
+      setNewEmail('')
+      setNewDisplayName('')
+      setNewIsAdmin(false)
+      await load()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '利用者を登録できませんでした。')
     } finally {
       setBusy(null)
     }
@@ -143,6 +172,15 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
 
       {account.isAdmin && <section className="panel settings-card admin-users">
         <div className="section-heading"><div><h2>利用者の管理</h2><p>利用停止、管理者、登録できるプロジェクトを利用者ごとに設定できます。</p></div><span>{users.length}人</span></div>
+        <form className="admin-register-form" onSubmit={preRegisterUser}>
+          <div><strong>利用者を事前登録</strong><small>ここで登録した会社メールだけログインできます。</small></div>
+          <div className="admin-register-fields">
+            <label>会社メール<input type="email" required value={newEmail} placeholder="name@example.co.jp" onChange={event => setNewEmail(event.target.value)} /></label>
+            <label>表示名<input value={newDisplayName} maxLength={200} placeholder="例：田中 太郎" onChange={event => setNewDisplayName(event.target.value)} /></label>
+          </div>
+          <label className="admin-register-check"><input type="checkbox" checked={newIsAdmin} onChange={event => setNewIsAdmin(event.target.checked)} />管理者として登録</label>
+          <button type="submit" className="secondary-button" disabled={busy === 'new-user'}>{busy === 'new-user' ? '登録中…' : 'このメールを利用登録'}</button>
+        </form>
         {users.map(user => <article key={user.id} className="admin-user-card">
           <div className="admin-user-heading">
             <div><strong>{user.displayName}</strong><small>{user.email || 'メール未設定'} ・ タスク{user.taskCount}件</small></div>
@@ -161,7 +199,7 @@ export default function SettingsPanel({ account }: { account: AuthAccount }) {
           <button type="button" className="secondary-button" disabled={busy === user.id} onClick={() => void saveUser(user)}>{busy === user.id ? '保存中…' : 'この利用者の設定を保存'}</button>
         </article>)}
       </section>}
-      {message && <div className={message.includes('保存しました') ? 'wbs-message' : 'error-message'} role="status">{message}</div>}
+      {message && <div className={message.includes('保存しました') || message.includes('利用登録しました') ? 'wbs-message' : 'error-message'} role="status">{message}</div>}
     </div>
   )
 }

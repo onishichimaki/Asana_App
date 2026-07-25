@@ -15,21 +15,36 @@ namespace TaskCapture.Api.Controllers;
 public sealed class AuthController(
     ICurrentUserContext currentUser,
     EmailAuthenticationService emailAuthentication,
+    AsanaConnectionService asanaConnectionService,
     IOptions<AccessOptions> access,
     IOptions<AsanaOptions> asana) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet("me")]
-    public IActionResult Me() => Ok(new
+    public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
-        authenticated = currentUser.IsAuthenticated,
-        mode = access.Value.Mode,
-        email = currentUser.IsAuthenticated ? currentUser.Email : null,
-        displayName = currentUser.IsAuthenticated ? currentUser.DisplayName : null,
-        isAdmin = currentUser.IsAuthenticated && currentUser.IsAdmin,
-        allowedEmailDomains = access.Value.AllowedEmailDomains,
-        asanaCredentialMode = asana.Value.CredentialMode
-    });
+        var connectionRequired = asana.Value.CredentialMode.Equals(
+            "PerUserOAuth",
+            StringComparison.OrdinalIgnoreCase);
+        var connected = !connectionRequired;
+        if (currentUser.IsAuthenticated && connectionRequired)
+        {
+            connected = (await asanaConnectionService.GetStatusAsync(cancellationToken)).Connected;
+        }
+
+        return Ok(new
+        {
+            authenticated = currentUser.IsAuthenticated,
+            mode = access.Value.Mode,
+            email = currentUser.IsAuthenticated ? currentUser.Email : null,
+            displayName = currentUser.IsAuthenticated ? currentUser.DisplayName : null,
+            isAdmin = currentUser.IsAuthenticated && currentUser.IsAdmin,
+            allowedEmailDomains = access.Value.AllowedEmailDomains,
+            asanaCredentialMode = asana.Value.CredentialMode,
+            asanaConnectionRequired = connectionRequired,
+            asanaConnected = connected
+        });
+    }
 
     [AllowAnonymous]
     [HttpPost("request-code")]

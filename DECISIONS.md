@@ -265,3 +265,10 @@
 - 状態: 採用・実装済み
 - 判断: ProductionではSQL Server、EmailCode + SSL SMTP、利用者別Asana OAuth + 同一メール必須 + HTTPS callback、Azure OpenAI、絶対パスの永続Data Protection鍵を起動時に検証する。不足時は安全側で起動を拒否し、ready endpointは秘密値を返さず不足分だけを示す。Development/TestのMock・RuleBasedフォールバックは維持する。
 - 理由: 配備後にメールが届かない、共有PATや別Asana identityで登録する、再起動でOAuth tokenを復号できない等の事故を、利用開始前に検出するため。
+
+## D-039: 全社利用は事前登録・同一メールAsana接続・即時失効の3段階で許可する
+
+- 日付: 2026-07-26
+- 状態: 採用・実装済み
+- 判断: `Access:AdminEmails` の初期管理者を除き、管理画面で事前登録した有効な会社メールだけへ確認コードを送る。ログイン後も利用者別OAuthで同じメールかつ `DefaultWorkspaceGid` の社内workspaceに所属するAsanaを接続するまでは接続・ログアウト・管理以外の業務APIを拒否する。利用停止時は全sessionを失効し、AsanaのOAuth解除endpointを呼んでから、成否にかかわらずDBの暗号化tokenを消去する。Usersの既存列で事前登録状態を表現できるためmigrationは追加しない。
+- 理由: 許可会社ドメインだけでは全社員が自己登録でき、会社identityとAsana権限の主体がずれる余地がある。入社・異動・退職を管理者が明示的に制御し、停止操作1回でアプリとAsana委任の両方を閉じるため。

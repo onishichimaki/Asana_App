@@ -1,6 +1,6 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "会社メールの個別アカウントでログインし、同じメールのAsanaアカウントだけをOAuth接続する登録専用アプリ。メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込み、RuleBased、Gemini、Azure OpenAIで整理する。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "管理者が事前登録した会社メールだけでログインし、同じメールのAsanaアカウントをOAuth接続してから利用する登録専用アプリ。メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込み、RuleBased、Gemini、Azure OpenAIで整理する。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
@@ -33,16 +33,16 @@
       "id": "email_auth_and_authorization",
       "name": "Email Authentication and Authorization",
       "type": "ASP.NET Core authentication boundary",
-      "responsibility": "会社メールの確認コード、HttpOnly Cookie session、利用停止・管理者policy、所有者分離、project許可、rate limitを強制する。",
-      "main_inputs": ["company email", "six digit code", "authentication cookie", "administrator settings"],
-      "main_outputs": ["authenticated claims", "User and UserSession rows", "401/403", "audit events"],
-      "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "src/TaskCapture.Api/Security/CurrentUserContext.cs", "src/TaskCapture.Api/Security/AccessClaimsTransformation.cs", "src/TaskCapture.Api/Controllers/AdminController.cs"]
+      "responsibility": "管理者の会社メール事前登録、確認コード、HttpOnly Cookie session、有効な同一メールAsana接続、利用停止・管理者policy、所有者分離、project許可、rate limitを強制する。",
+      "main_inputs": ["pre-registered company email", "six digit code", "authentication cookie", "Asana connection", "administrator settings"],
+      "main_outputs": ["authenticated and Asana-connected claims boundary", "User and UserSession rows", "401/403", "audit events"],
+      "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "src/TaskCapture.Api/Security/CurrentUserContext.cs", "src/TaskCapture.Api/Security/AccessClaimsTransformation.cs", "src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs", "src/TaskCapture.Api/Controllers/AdminController.cs"]
     },
     {
       "id": "asana_user_connection",
       "name": "Per-user Asana Connection",
       "type": "OAuth and token provider",
-      "responsibility": "PATまたは利用者別OAuthを切り替え、OAuth state検証、ログイン中の会社メールとAsana profile emailの厳格一致、token暗号化、refresh、解除、利用者別project制限を提供する。",
+      "responsibility": "PATまたは利用者別OAuthを切り替え、OAuth state検証、ログイン中の会社メールとAsana profile emailの厳格一致、指定した社内workspaceへの所属確認、token暗号化、refresh、provider解除とローカル消去、利用者別project制限を提供する。",
       "main_inputs": ["signed-in company email", "OAuth code/state", "Asana profile email", "Data Protection keys", "Asana OAuth settings"],
       "main_outputs": ["email-verified protected token row", "Bearer access token", "connection status", "safe mismatch rejection"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
@@ -484,18 +484,18 @@
     {
       "id": "email_sign_in_flow",
       "name": "会社メール確認コードログイン",
-      "inputs": ["allowed company email", "six digit verification code"],
-      "processing": ["domain validation", "send and attempt rate limiting", "PBKDF2 hash save", "SMTP or Mock delivery", "fixed-time verification", "User and UserSession save", "HttpOnly Cookie issue", "audit save"],
-      "outputs": ["authenticated session", "per-user client key", "401/403 on invalid access"],
-      "source_files": ["src/taskcapture-web/src/AuthGate.tsx", "src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs"]
+      "inputs": ["administrator pre-registration", "allowed company email", "six digit verification code"],
+      "processing": ["pre-registration and active-state check", "domain validation", "send and attempt rate limiting", "PBKDF2 hash save", "SMTP or Mock delivery", "fixed-time verification", "UserSession save", "HttpOnly Cookie issue", "audit save"],
+      "outputs": ["authenticated session", "per-user client key", "401/403 on unregistered or invalid access"],
+      "source_files": ["src/taskcapture-web/src/AuthGate.tsx", "src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Controllers/AdminController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs"]
     },
     {
       "id": "asana_oauth_flow",
       "name": "利用者別Asana接続",
       "inputs": ["authenticated company email", "OAuth authorization code", "protected state"],
-      "processing": ["state and expiry validation", "token exchange", "Asana profile email/workspace read", "case-insensitive company/Asana email equality check", "mismatch rejection audit", "Data Protection token encryption", "server-side refresh", "project permission filtering"],
-      "outputs": ["email-verified encrypted AsanaConnection", "user-visible connection status", "authorized Bearer token", "safe mismatch message"],
-      "source_files": ["src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
+      "processing": ["state and expiry validation", "token exchange", "Asana profile email/workspace read", "case-insensitive company/Asana email equality check", "configured company workspace membership check", "mismatch rejection audit", "Data Protection token encryption", "server-side refresh", "business API authorization gate", "project permission filtering", "provider revoke and local token erase on disconnect or deactivation"],
+      "outputs": ["email-verified encrypted AsanaConnection", "user-visible connection status", "authorized Bearer token", "safe mismatch message", "403 before connection"],
+      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
     },
     {
       "id": "organize_flow",

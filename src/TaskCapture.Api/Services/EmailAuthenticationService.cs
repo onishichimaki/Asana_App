@@ -28,6 +28,7 @@ public sealed class EmailAuthenticationService(
         CancellationToken cancellationToken)
     {
         var normalizedEmail = NormalizeAndValidateEmail(email);
+        await EnsurePreRegisteredAsync(normalizedEmail, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var latest = await db.EmailLoginCodes
             .Where(item => item.Email == normalizedEmail)
@@ -123,6 +124,11 @@ public sealed class EmailAuthenticationService(
             cancellationToken);
         if (user is null)
         {
+            if (!IsAdmin(normalizedEmail))
+            {
+                throw new UnauthorizedAccessException(
+                    "このメールは利用登録されていません。管理者に連絡してください。");
+            }
             user = new User
             {
                 ClientKey = clientKey,
@@ -231,6 +237,28 @@ public sealed class EmailAuthenticationService(
 
     private bool IsAdmin(string email) =>
         access.Value.AdminEmails.Contains(email, StringComparer.OrdinalIgnoreCase);
+
+    private async Task EnsurePreRegisteredAsync(
+        string normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        if (IsAdmin(normalizedEmail)) return;
+
+        var clientKey = UserIdentityKey.Create("Email", normalizedEmail);
+        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(
+            item => item.ClientKey == clientKey,
+            cancellationToken);
+        if (user is null)
+        {
+            throw new UnauthorizedAccessException(
+                "このメールは利用登録されていません。管理者に連絡してください。");
+        }
+        if (!user.IsActive)
+        {
+            throw new UnauthorizedAccessException(
+                "この利用者はアプリの使用を停止されています。");
+        }
+    }
 
     private static string HashCode(string email, string code)
     {

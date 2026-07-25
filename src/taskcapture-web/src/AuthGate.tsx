@@ -10,6 +10,8 @@ export type AuthAccount = {
   isAdmin: boolean
   allowedEmailDomains: string[]
   asanaCredentialMode: string
+  asanaConnectionRequired: boolean
+  asanaConnected: boolean
 }
 
 type AuthGateProps = {
@@ -108,7 +110,7 @@ function AuthGate({ children }: AuthGateProps) {
         <p className="auth-eyebrow">TASK CAPTURE</p>
         <h1 id="sign-in-title">会社メールでログイン</h1>
         <p className="auth-description">
-          パスワード登録は不要です。メールに届く6桁の確認コードで安全にログインできます。
+          管理者が登録した会社メールだけ利用できます。メールに届く6桁コードでログインします。
         </p>
 
         {step === 'email'
@@ -124,7 +126,7 @@ function AuthGate({ children }: AuthGateProps) {
                 placeholder={`name${domainHint.split('、')[0]}`}
                 onChange={event => setEmail(event.target.value)}
               />
-              <p className="auth-hint">利用できるメール：{domainHint}</p>
+              <p className="auth-hint">管理者が事前登録したメール：{domainHint}</p>
               <button type="submit" disabled={busy || !email.trim()}>
                 {busy ? '送信しています…' : '確認コードを受け取る'}
               </button>
