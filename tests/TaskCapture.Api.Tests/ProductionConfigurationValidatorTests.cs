@@ -46,7 +46,7 @@ public sealed class ProductionConfigurationValidatorTests
 
         Assert.Equal(5, issues.Count);
         Assert.Contains(issues, issue => issue.Contains("SQL Server"));
-        Assert.Contains(issues, issue => issue.Contains("SMTP"));
+        Assert.Contains(issues, issue => issue.Contains("AsanaOAuth"));
         Assert.Contains(issues, issue => issue.Contains("Asana"));
         Assert.Contains(issues, issue => issue.Contains("Azure OpenAI"));
         Assert.Contains(issues, issue => issue.Contains("Data Protection"));
@@ -81,29 +81,20 @@ public sealed class ProductionConfigurationValidatorTests
     {
         Mode = "Api",
         CredentialMode = "PerUserOAuth",
+        DefaultWorkspaceGid = "company-workspace",
         OAuth = new AsanaOAuthOptions
         {
             ClientId = "client",
             ClientSecret = "test-secret",
-            RedirectUri = "https://taskcapture.example/api/asana/connection/callback",
+            RedirectUri = "https://taskcapture.example/api/auth/asana/callback",
             RequireMatchingEmail = true
         }
     };
 
     private static AccessOptions ConfiguredAccess() => new()
     {
-        Mode = "EmailCode",
-        AllowedEmailDomains = ["example.co.jp"],
-        EmailCode = new EmailCodeOptions
-        {
-            Delivery = new EmailDeliveryOptions
-            {
-                Mode = "Smtp",
-                Host = "smtp.example.co.jp",
-                FromAddress = "taskcapture@example.co.jp",
-                EnableSsl = true
-            }
-        }
+        Mode = "AsanaOAuth",
+        AllowedEmailDomains = ["example.co.jp"]
     };
 
     private static IConfiguration CreateConfiguration(

@@ -17,8 +17,12 @@ public sealed class AuthController(
     EmailAuthenticationService emailAuthentication,
     AsanaConnectionService asanaConnectionService,
     IOptions<AccessOptions> access,
-    IOptions<AsanaOptions> asana) : ControllerBase
+    IOptions<AsanaOptions> asana,
+    IHostEnvironment environment) : ControllerBase
 {
+    private const string AsanaCorrelationCookie = "TaskCapture.AsanaLogin";
+    private const string AsanaLauncherCookie = "TaskCapture.AsanaLoginLauncher";
+
     [AllowAnonymous]
     [HttpGet("me")]
     public async Task<IActionResult> Me(CancellationToken cancellationToken)
@@ -74,6 +78,169 @@ public sealed class AuthController(
             Request.Headers.UserAgent.ToString(),
             HttpContext.TraceIdentifier,
             cancellationToken);
+        await SignInAsync(result);
+
+        return Ok(new
+        {
+            authenticated = true,
+            email = result.Email,
+            displayName = result.DisplayName,
+            isAdmin = result.IsAdmin
+        });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("asana/start")]
+    public IActionResult StartAsanaLogin([FromQuery] bool launcher = false)
+    {
+        EnsureAsanaLoginMode();
+        var login = asanaConnectionService.BuildLoginAuthorizationUri();
+        Response.Cookies.Append(
+            AsanaCorrelationCookie,
+            login.Correlation,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = UseSecureLoginCookie(),
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true,
+                Path = "/api/auth/asana",
+                Expires = login.ExpiresAtUtc
+            });
+        if (launcher)
+        {
+            Response.Cookies.Append(
+                AsanaLauncherCookie,
+                "1",
+                new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = UseSecureLoginCookie(),
+                    SameSite = SameSiteMode.Lax,
+                    IsEssential = true,
+                    Path = "/api/auth/asana",
+                    Expires = login.ExpiresAtUtc
+                });
+        }
+        return Redirect(login.AuthorizationUrl);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("asana/callback")]
+    public async Task<IActionResult> CompleteAsanaLogin(
+        [FromQuery] string? code,
+        [FromQuery] string? state,
+        [FromQuery] string? error,
+        CancellationToken cancellationToken)
+    {
+        EnsureAsanaLoginMode();
+        var correlation = Request.Cookies[AsanaCorrelationCookie];
+        var launcher = Request.Cookies[AsanaLauncherCookie] == "1";
+        Response.Cookies.Delete(
+            AsanaCorrelationCookie,
+            new CookieOptions
+            {
+                Secure = UseSecureLoginCookie(),
+                SameSite = SameSiteMode.Lax,
+                Path = "/api/auth/asana"
+            });
+        Response.Cookies.Delete(
+            AsanaLauncherCookie,
+            new CookieOptions
+            {
+                Secure = UseSecureLoginCookie(),
+                SameSite = SameSiteMode.Lax,
+                Path = "/api/auth/asana"
+            });
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            return LoginRedirect("cancelled", launcher);
+        }
+        if (string.IsNullOrWhiteSpace(code)
+            || string.IsNullOrWhiteSpace(state)
+            || string.IsNullOrWhiteSpace(correlation)
+            || code.Length > 2_048
+            || state.Length > 8_000
+            || correlation.Length > 256)
+        {
+            return LoginRedirect("expired", launcher);
+        }
+
+        try
+        {
+            var result = await asanaConnectionService.LoginAsync(
+                code,
+                state,
+                correlation,
+                Request.Headers.UserAgent.ToString(),
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+            await SignInAsync(result);
+            return LoginRedirect("connected", launcher);
+        }
+        catch (AsanaWorkspaceDeniedException)
+        {
+            return LoginRedirect("wrong-workspace", launcher);
+        }
+        catch (AsanaLoginException exception)
+        {
+            return LoginRedirect(exception.Reason, launcher);
+        }
+        catch
+        {
+            return LoginRedirect("error", launcher);
+        }
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        if (access.Value.Mode.Equals("Development", StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(new { message = "開発用ログインはアプリの再起動まで有効です。" });
+        }
+
+        var hasAnotherActiveSession = false;
+        var sessionText = User.FindFirstValue(EmailAuthenticationDefaults.SessionClaim);
+        if (Guid.TryParse(sessionText, out var sessionId))
+        {
+            hasAnotherActiveSession = await emailAuthentication.RevokeSessionAsync(
+                sessionId,
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+        }
+
+        if (access.Value.Mode.Equals("AsanaOAuth", StringComparison.OrdinalIgnoreCase)
+            && !hasAnotherActiveSession)
+        {
+            await asanaConnectionService.DisconnectAsync(
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+        }
+
+        await HttpContext.SignOutAsync(EmailAuthenticationDefaults.Scheme);
+        return Ok(new { message = "ログアウトしました。" });
+    }
+
+    private void EnsureEmailMode()
+    {
+        if (!access.Value.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("メール確認コードによるログインは現在使用していません。");
+        }
+    }
+
+    private void EnsureAsanaLoginMode()
+    {
+        if (!access.Value.Mode.Equals("AsanaOAuth", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Asanaログインは現在使用していません。");
+        }
+    }
+
+    private async Task SignInAsync(AuthenticatedUserResponse result)
+    {
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, result.Email),
@@ -94,42 +261,14 @@ public sealed class AuthController(
                 AllowRefresh = true,
                 ExpiresUtc = result.ExpiresAtUtc
             });
-
-        return Ok(new
-        {
-            authenticated = true,
-            email = result.Email,
-            displayName = result.DisplayName,
-            isAdmin = result.IsAdmin
-        });
     }
 
-    [Authorize]
-    [HttpPost("logout")]
-    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
-    {
-        if (access.Value.Mode.Equals("Development", StringComparison.OrdinalIgnoreCase))
-        {
-            return Ok(new { message = "開発用ログインはアプリの再起動まで有効です。" });
-        }
+    private RedirectResult LoginRedirect(string result, bool launcher) =>
+        Redirect(launcher
+            ? $"/?launcher=1&login={Uri.EscapeDataString(result)}"
+            : $"/?login={Uri.EscapeDataString(result)}");
 
-        var sessionText = User.FindFirstValue(EmailAuthenticationDefaults.SessionClaim);
-        if (Guid.TryParse(sessionText, out var sessionId))
-        {
-            await emailAuthentication.RevokeSessionAsync(
-                sessionId,
-                HttpContext.TraceIdentifier,
-                cancellationToken);
-        }
-        await HttpContext.SignOutAsync(EmailAuthenticationDefaults.Scheme);
-        return Ok(new { message = "ログアウトしました。" });
-    }
-
-    private void EnsureEmailMode()
-    {
-        if (!access.Value.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("メール確認コードによるログインは現在使用していません。");
-        }
-    }
+    private bool UseSecureLoginCookie() =>
+        Request.IsHttps
+        || (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"));
 }

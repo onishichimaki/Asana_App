@@ -40,7 +40,8 @@ builder.Services
                     .GetRequiredService<
                         Microsoft.Extensions.Options.IOptions<AccessOptions>>()
                     .Value;
-                if (configured.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase))
+                if (configured.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase)
+                    || configured.Mode.Equals("AsanaOAuth", StringComparison.OrdinalIgnoreCase))
                 {
                     return EmailAuthenticationDefaults.Scheme;
                 }

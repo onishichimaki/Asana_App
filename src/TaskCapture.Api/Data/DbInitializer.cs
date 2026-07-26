@@ -115,13 +115,15 @@ public static class DbInitializer
             if (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
             {
                 throw new InvalidOperationException(
-                    "Access:Mode=Development is allowed only in Development or Testing. Configure EmailCode before deployment.");
+                    "Access:Mode=Development is allowed only in Development or Testing. Configure AsanaOAuth before deployment.");
             }
 
             return;
         }
 
-        if (!options.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase))
+        var isEmailCode = options.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase);
+        var isAsanaOAuth = options.Mode.Equals("AsanaOAuth", StringComparison.OrdinalIgnoreCase);
+        if (!isEmailCode && !isAsanaOAuth)
         {
             throw new InvalidOperationException($"Unsupported access mode: {options.Mode}");
         }
@@ -130,7 +132,12 @@ public static class DbInitializer
                 !string.IsNullOrWhiteSpace(domain.Trim().TrimStart('@'))))
         {
             throw new InvalidOperationException(
-                "Access:AllowedEmailDomains must contain at least one company email domain in EmailCode mode.");
+                "Access:AllowedEmailDomains must contain at least one company email domain.");
+        }
+
+        if (isAsanaOAuth)
+        {
+            return;
         }
 
         var deliveryMode = options.EmailCode.Delivery.Mode;

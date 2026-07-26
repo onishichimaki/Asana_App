@@ -24,25 +24,29 @@ public static class ProductionConfigurationValidator
             issues.Add("本番DBとしてSQL Serverの接続文字列を設定してください。");
         }
 
-        var delivery = access.EmailCode.Delivery;
-        if (!access.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase)
-            || access.AllowedEmailDomains.Length == 0
-            || !delivery.Mode.Equals("Smtp", StringComparison.OrdinalIgnoreCase)
-            || string.IsNullOrWhiteSpace(delivery.Host)
-            || string.IsNullOrWhiteSpace(delivery.FromAddress)
-            || !delivery.EnableSsl)
+        if (!access.Mode.Equals("AsanaOAuth", StringComparison.OrdinalIgnoreCase)
+            || access.AllowedEmailDomains.Length == 0)
         {
-            issues.Add("会社メール確認コード用の許可ドメインとSSL対応SMTPを設定してください。");
+            issues.Add("本番ログインをAsanaOAuthにし、許可する会社メールドメインを設定してください。");
         }
 
+        var requiredScopes = new[]
+        {
+            "projects:read", "sections:read", "tasks:read", "tasks:write", "tasks:delete",
+            "users:read", "workspaces:read"
+        };
         if (!asana.Mode.Equals("Api", StringComparison.OrdinalIgnoreCase)
             || !asana.CredentialMode.Equals("PerUserOAuth", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(asana.DefaultWorkspaceGid)
             || string.IsNullOrWhiteSpace(asana.OAuth.ClientId)
             || string.IsNullOrWhiteSpace(asana.OAuth.ClientSecret)
             || !IsHttps(asana.OAuth.RedirectUri)
-            || !asana.OAuth.RequireMatchingEmail)
+            || !asana.OAuth.RequireMatchingEmail
+            || requiredScopes.Any(required => !asana.OAuth.Scopes.Contains(
+                required,
+                StringComparer.OrdinalIgnoreCase)))
         {
-            issues.Add("Asanaを利用者別OAuth・同一メール必須・HTTPS callbackで設定してください。");
+            issues.Add("Asanaを社内ワークスペース指定・利用者別OAuth・必要scope・HTTPS callbackで設定してください。");
         }
 
         var azure = organization.AzureOpenAI;

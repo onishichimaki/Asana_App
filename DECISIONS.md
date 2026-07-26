@@ -213,7 +213,7 @@
 ## D-031: Entra IDではなく会社メール確認コードで個別アカウントを作る
 
 - 日付: 2026-07-25
-- 状態: 採用・実装済み
+- 状態: 開発・切替用として維持。本番推奨はD-040で置き換え。
 - 判断: 許可した会社メールドメインへ6桁の確認コードを送り、メールアドレスごとに利用者とHttpOnly Cookie sessionを作る。パスワードは保存しない。確認コードはsalt付きPBKDF2-SHA256ハッシュだけを10分保持し、送信頻度・試行回数を制限する。本番メールはSMTP、Development/TestはMockへ差し替える。
 - 理由: Entra IDの全社テナント設定・管理者同意をMVPの前提にせず、会社メールの所有確認と利用者別履歴を実現するため。将来SSOを追加しても `ICurrentUserContext` 以降の所有者境界は維持できる。
 
@@ -262,13 +262,27 @@
 ## D-038: Productionは必要な外部設定が揃わない限り起動しない
 
 - 日付: 2026-07-26
-- 状態: 採用・実装済み
+- 状態: 安全側起動拒否は維持。SMTP必須条件はD-040で置き換え。
 - 判断: ProductionではSQL Server、EmailCode + SSL SMTP、利用者別Asana OAuth + 同一メール必須 + HTTPS callback、Azure OpenAI、絶対パスの永続Data Protection鍵を起動時に検証する。不足時は安全側で起動を拒否し、ready endpointは秘密値を返さず不足分だけを示す。Development/TestのMock・RuleBasedフォールバックは維持する。
 - 理由: 配備後にメールが届かない、共有PATや別Asana identityで登録する、再起動でOAuth tokenを復号できない等の事故を、利用開始前に検出するため。
 
 ## D-039: 全社利用は事前登録・同一メールAsana接続・即時失効の3段階で許可する
 
 - 日付: 2026-07-26
-- 状態: 採用・実装済み
+- 状態: 事前登録と即時失効は維持。2段階ログインはD-040で1回のAsana OAuthへ置き換え。
 - 判断: `Access:AdminEmails` の初期管理者を除き、管理画面で事前登録した有効な会社メールだけへ確認コードを送る。ログイン後も利用者別OAuthで同じメールかつ `DefaultWorkspaceGid` の社内workspaceに所属するAsanaを接続するまでは接続・ログアウト・管理以外の業務APIを拒否する。利用停止時は全sessionを失効し、AsanaのOAuth解除endpointを呼んでから、成否にかかわらずDBの暗号化tokenを消去する。Usersの既存列で事前登録状態を表現できるためmigrationは追加しない。
 - 理由: 許可会社ドメインだけでは全社員が自己登録でき、会社identityとAsana権限の主体がずれる余地がある。入社・異動・退職を管理者が明示的に制御し、停止操作1回でアプリとAsana委任の両方を閉じるため。
+
+## D-040: 本番ログインとAsana連携を1回のOAuthに一本化する
+
+- 日付: 2026-07-26
+- 状態: 採用・実装済み。D-031のEmailCode本番推奨、D-038のSMTP必須、D-039の2段階接続を置き換える。
+- 判断: Productionは `Access:Mode=AsanaOAuth` とし、利用者は「Asanaでログイン」の1回でアプリsessionと利用者別Asana委任を作る。callbackはPKCE S256、Data Protection保護state、HttpOnlyの短時間照合Cookieを必須とし、Asana profile emailが許可会社ドメイン、管理画面の事前登録済み利用者、`DefaultWorkspaceGid` 所属をすべて満たす場合だけ保存する。初期管理者だけは `AdminEmails` をbootstrapに使う。PC・iPhone・iPadのsessionは併用でき、通常ログアウトは現在sessionを失効し、ほかに有効sessionがない場合だけAsana OAuthも解除する。利用停止は全sessionとOAuthを即時失効する。
+- 理由: 利用者がメールコードログイン後に再度Asana接続を行う二重操作と、オンプレ本番のSMTP運用をなくすため。本人のAsana identityを一貫して使うことで、アプリ利用者、履歴所有者、Asana登録権限の主体を一致させる。EmailCode実装は開発・切替用に残すが、Production起動検証では許可しない。
+
+## D-041: 録音済み音声ファイルは対象外とする
+
+- 日付: 2026-07-26
+- 状態: 採用・実装済み
+- 判断: マイクのリアルタイム入力はWeb Speech APIで維持し、MP3/WAV/M4A等の音声ファイルアップロード・保存・文字起こしは実装しない。
+- 理由: 利用者は音声ファイル対応を必要としておらず、アップロードに伴う容量制限、保管、マルウェア検査、個人情報の追加リスクをMVPに入れないため。

@@ -1,6 +1,6 @@
 {
   "system_name": "Task Capture for Asana",
-  "summary": "管理者が事前登録した会社メールだけでログインし、同じメールのAsanaアカウントをOAuth接続してから利用する登録専用アプリ。メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、音声または可変レイアウトWBSを取り込み、RuleBased、Gemini、Azure OpenAIで整理する。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
+  "summary": "管理者が事前登録した会社メールのAsanaアカウントで1回ログインし、本人のAsana権限で利用する登録専用アプリ。メイリオUI優先のReact SPAからテキスト、議事録、画像OCR、マイク音声または可変レイアウトWBSを取り込み、RuleBased、Gemini、Azure OpenAIで整理する。SQL Serverが利用者別履歴・暗号化Asana接続・権限・監査を保持し、WindowsではWebView2 tray launcherから同じ画面を開く。",
   "modules": [
     {
       "id": "responsive_web_ui",
@@ -24,17 +24,17 @@
       "id": "api_host",
       "name": "API Host",
       "type": "ASP.NET Core Web API",
-      "responsibility": "設定、DI、CORS、例外処理、静的SPA配信、Controller routingを構成し、本番のSQL・SMTP・Asana OAuth・Azure OpenAI・永続暗号鍵が安全に設定されているか起動時に検証する。",
+      "responsibility": "設定、DI、CORS、例外処理、静的SPA配信、Controller routingを構成し、本番のSQL・AsanaOAuthログイン・workspace・scope・Azure OpenAI・永続暗号鍵が安全に設定されているか起動時に検証する。",
       "main_inputs": ["HTTP JSON", "environment variables", "appsettings"],
       "main_outputs": ["HTTP JSON", "Problem Details", "SPA assets"],
       "source_files": ["src/TaskCapture.Api/Program.cs", "src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs", "src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs", "src/TaskCapture.Api/appsettings.json", "src/TaskCapture.Api/appsettings.Production.example.json"]
     },
     {
-      "id": "email_auth_and_authorization",
-      "name": "Email Authentication and Authorization",
+      "id": "asana_login_and_authorization",
+      "name": "Asana Login and Authorization",
       "type": "ASP.NET Core authentication boundary",
-      "responsibility": "管理者の会社メール事前登録、確認コード、HttpOnly Cookie session、有効な同一メールAsana接続、利用停止・管理者policy、所有者分離、project許可、rate limitを強制する。",
-      "main_inputs": ["pre-registered company email", "six digit code", "authentication cookie", "Asana connection", "administrator settings"],
+      "responsibility": "管理者の会社メール事前登録、PKCE付きAsana OAuthログイン、HttpOnly Cookie session、workspace所属、利用停止・管理者policy、所有者分離、project許可、rate limitを強制する。",
+      "main_inputs": ["pre-registered company email", "Asana OAuth code/state", "PKCE verifier", "correlation cookie", "authentication cookie", "administrator settings"],
       "main_outputs": ["authenticated and Asana-connected claims boundary", "User and UserSession rows", "401/403", "audit events"],
       "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "src/TaskCapture.Api/Security/CurrentUserContext.cs", "src/TaskCapture.Api/Security/AccessClaimsTransformation.cs", "src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs", "src/TaskCapture.Api/Controllers/AdminController.cs"]
     },
@@ -42,8 +42,8 @@
       "id": "asana_user_connection",
       "name": "Per-user Asana Connection",
       "type": "OAuth and token provider",
-      "responsibility": "PATまたは利用者別OAuthを切り替え、OAuth state検証、ログイン中の会社メールとAsana profile emailの厳格一致、指定した社内workspaceへの所属確認、token暗号化、refresh、provider解除とローカル消去、利用者別project制限を提供する。",
-      "main_inputs": ["signed-in company email", "OAuth code/state", "Asana profile email", "Data Protection keys", "Asana OAuth settings"],
+      "responsibility": "PATまたは利用者別OAuthを切り替え、PKCE・state・照合Cookieを検証し、Asana profile emailの会社ドメイン・事前登録・利用中状態と社内workspace所属を確認する。token暗号化、refresh、provider解除とローカル消去、利用者別project制限を提供する。",
+      "main_inputs": ["pre-registered company email", "OAuth code/state", "PKCE verifier", "correlation cookie", "Asana profile email/workspaces", "Data Protection keys", "Asana OAuth settings"],
       "main_outputs": ["email-verified protected token row", "Bearer access token", "connection status", "safe mismatch rejection"],
       "source_files": ["src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
     },
@@ -448,14 +448,14 @@
       "id": "asana_rest_api",
       "name": "Asana REST API",
       "type": "HTTPS JSON API",
-      "description": "PATまたは利用者別OAuthでworkspaceのproject/sectionを取得する。OAuth時はAsana profile emailと会社メールを一致確認してからtokenを暗号化保存・サーバーrefreshし、利用者のAsana権限とアプリ側許可の両方を満たすprojectだけへ登録する。",
+      "description": "Asana OAuthでアプリログインと利用者別API委任を同時に完了する。profile emailとworkspaceを検証してtokenを暗号化保存・サーバーrefreshし、利用者のAsana権限とアプリ側許可の両方を満たすprojectだけへ登録する。開発用はPAT/Mockも選べる。",
       "source_files": ["src/TaskCapture.Api/Controllers/AsanaMetadataController.cs", "src/TaskCapture.Api/Services/AsanaServices.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/appsettings.json"]
     },
     {
-      "id": "smtp_email",
-      "name": "Company SMTP",
-      "type": "SMTP submission",
-      "description": "本番の会社メール確認コードを送る。SMTP資格情報と平文コードはDB・監査ログへ保存しない。Development/TestはMock senderへ差し替える。",
+      "id": "email_code_fallback",
+      "name": "Email-code fallback",
+      "type": "Optional development authentication",
+      "description": "開発・切替用にのみ確認コード方式を残す。Production起動検証はEmailCodeを許可せず、SMTPを本番必須にしない。",
       "source_files": ["src/TaskCapture.Api/Services/AccountEmailSender.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "README.md"]
     },
     {
@@ -469,7 +469,7 @@
       "id": "browser_capture_apis",
       "name": "Clipboard / File / OCR / WBS / Web Speech",
       "type": "Browser APIs",
-      "description": "Clipboard、議事録読込、Tesseract.js日本語OCR、ja-JP音声、XLSX/UTF-8・Shift_JIS CSVのWBS解析をブラウザー内で行い、抽出文字列または確認済み正規化行だけをAPIへ渡す。",
+      "description": "Clipboard、議事録読込、Tesseract.js日本語OCR、マイクのja-JP音声、XLSX/UTF-8・Shift_JIS CSVのWBS解析をブラウザー内で行い、抽出文字列または確認済み正規化行だけをAPIへ渡す。録音済み音声ファイルは対象外。",
       "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/WbsImport.tsx", "src/taskcapture-web/package.json", "REQUIREMENTS.md"]
     },
     {
@@ -482,20 +482,20 @@
   ],
   "data_flows": [
     {
-      "id": "email_sign_in_flow",
-      "name": "会社メール確認コードログイン",
+      "id": "email_code_fallback_flow",
+      "name": "開発・切替用確認コード",
       "inputs": ["administrator pre-registration", "allowed company email", "six digit verification code"],
-      "processing": ["pre-registration and active-state check", "domain validation", "send and attempt rate limiting", "PBKDF2 hash save", "SMTP or Mock delivery", "fixed-time verification", "UserSession save", "HttpOnly Cookie issue", "audit save"],
-      "outputs": ["authenticated session", "per-user client key", "401/403 on unregistered or invalid access"],
+      "processing": ["EmailCode mode only", "pre-registration and active-state check", "domain validation", "PBKDF2 hash save", "Mock or SMTP delivery", "fixed-time verification", "UserSession save"],
+      "outputs": ["fallback authenticated session", "401/403 on unregistered or invalid access"],
       "source_files": ["src/taskcapture-web/src/AuthGate.tsx", "src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Controllers/AdminController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs"]
     },
     {
-      "id": "asana_oauth_flow",
-      "name": "利用者別Asana接続",
-      "inputs": ["authenticated company email", "OAuth authorization code", "protected state"],
-      "processing": ["state and expiry validation", "token exchange", "Asana profile email/workspace read", "case-insensitive company/Asana email equality check", "configured company workspace membership check", "mismatch rejection audit", "Data Protection token encryption", "server-side refresh", "business API authorization gate", "project permission filtering", "provider revoke and local token erase on disconnect or deactivation"],
-      "outputs": ["email-verified encrypted AsanaConnection", "user-visible connection status", "authorized Bearer token", "safe mismatch message", "403 before connection"],
-      "source_files": ["src/taskcapture-web/src/App.tsx", "src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AsanaConnectionController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs"]
+      "id": "asana_oauth_login_flow",
+      "name": "Asana OAuthログインとAPI連携",
+      "inputs": ["administrator pre-registration", "OAuth authorization code/state", "PKCE verifier", "correlation cookie", "Asana profile email/workspaces"],
+      "processing": ["PKCE S256 authorization", "protected state and expiry validation", "fixed-time correlation cookie validation", "token exchange", "company domain check", "pre-registration and active-state check", "configured company workspace membership check", "Data Protection token encryption", "UserSession and AsanaConnection save", "project permission filtering", "current session revoke on logout", "provider revoke and local token erase after the final active session or on deactivation"],
+      "outputs": ["authenticated session", "encrypted AsanaConnection", "authorized Bearer token", "user-visible safe rejection", "per-user project list"],
+      "source_files": ["src/taskcapture-web/src/AuthGate.tsx", "src/taskcapture-web/src/SettingsPanel.tsx", "src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs", "src/TaskCapture.Api/Services/ProjectAccessService.cs", "tests/TaskCapture.Api.Tests/AsanaOAuthAuthenticationApiTests.cs"]
     },
     {
       "id": "organize_flow",
@@ -564,21 +564,21 @@
   ],
   "risks_or_unknowns": [
     {
-      "id": "external_identity_not_integrated",
-      "name": "SSOは未統合",
-      "description": "会社メール確認コードと利用者別認可は実装済みだが、Entra ID等のSSOは組織管理者同意を前提とするため対象外。本番前にSMTP、HTTPS、cookie domain、Data Protection鍵を設定する。",
-      "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/EmailAuthenticationService.cs", "DECISIONS.md"]
+      "id": "entra_sso_not_integrated",
+      "name": "Entra ID SSOは対象外",
+      "description": "本番identityはAsana OAuthを使うためEntra IDの全社管理者同意は不要。Asanaを利用できない社員向けの別SSOは対象外。",
+      "source_files": ["src/TaskCapture.Api/Controllers/AuthController.cs", "src/TaskCapture.Api/Services/AsanaConnectionService.cs", "DECISIONS.md"]
     },
     {
       "id": "local_integrations_only",
       "name": "実連携検証はローカル限定",
-      "description": "DESKTOP-RQ3T767のSQL Serverでは16テーブルと9 migration、Asana限定projectでは通常入力とWBSの実登録まで成功済み。Azure OpenAI adapterと本番設定診断は自動テスト済みだが、本番SMTP、OAuthアプリ、Azure resource、HTTPS、Secret Store、運用監視は配備先未設定。",
+      "description": "DESKTOP-RQ3T767のSQL Serverでは16テーブルと9 migration、Asana限定projectでは通常入力とWBSの実登録まで成功済み。AsanaログインとAzure OpenAI adapterの要求は自動テスト済みだが、本番OAuthアプリ・Azure resource・HTTPS・Secret Store・運用監視は配備先未設定。",
       "source_files": ["STATUS.md", "README.md", "src/TaskCapture.Api/appsettings.json", "src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs"]
     },
     {
       "id": "speech_compatibility",
       "name": "音声入力のブラウザー差",
-      "description": "Web Speech API対応とマイク権限に依存し、mobileではHTTPS配信が必要。",
+      "description": "マイクのWeb Speech API対応と権限に依存し、mobileではHTTPS配信が必要。録音済み音声ファイルは仕様上の対象外。",
       "source_files": ["src/taskcapture-web/src/App.tsx", "DECISIONS.md"]
     },
     {
@@ -610,7 +610,7 @@
     {
       "id": "secure_deployment",
       "name": "HTTPS限定配備",
-      "description": "配備先のSecret StoreへSQL接続、SMTP、Asana OAuth Client Secret、Azure OpenAI設定を登録し、HTTPS URLと永続Data Protection鍵、定期backup、監視通知を有効にする。ready診断で全項目を確認する。",
+      "description": "配備先のSecret StoreへSQL接続、Asana OAuth Client Secret、Azure OpenAI設定を登録し、HTTPS URLと永続Data Protection鍵、定期backup、監視通知を有効にする。Asanaアプリを社内workspaceへ公開し、ready診断で全項目を確認する。",
       "source_files": ["README.md", "ARCHITECTURE.md", "src/TaskCapture.Api/Options/IntegrationOptions.cs", "src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs", "scripts/Test-TaskCaptureReadiness.ps1", "scripts/Install-TaskCaptureBackupTask.ps1"]
     },
     {

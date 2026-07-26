@@ -20,7 +20,7 @@ WBS一括取込では、`.xlsx` / `.csv` を選択すると見出し行・列・
 |---|---|---|
 | F-01 | テキスト入力 | 1〜10,000文字を入力できる |
 | F-02 | 貼り付け | OS 標準貼り付けと Clipboard API 読み込みができる |
-| F-03 | 音声入力 | 対応ブラウザーで Web Speech API により日本語を追記できる |
+| F-03 | 音声入力 | 対応ブラウザーでマイクと Web Speech API により日本語を追記できる。録音済み音声ファイルは対象外 |
 | F-04 | タスク整理 | Azure OpenAI、Geminiまたはルールベースでタイトル、内容、担当者、期限、サブタスク候補を返す |
 | F-05 | 候補確認・修正 | 登録前にタイトル、内容、担当者、開始日、期限とサブタスクを編集できる |
 | F-06 | 詳細設定 | Asana APIから取得したプロジェクトとセクションを名前で選択でき、タグ、カスタムフィールド、優先度は折りたためる |
@@ -34,13 +34,13 @@ WBS一括取込では、`.xlsx` / `.csv` を選択すると見出し行・列・
 | F-14 | Asana担当者名解決 | 自由文の担当者名をworkspaceユーザーの完全一致、次に一意な部分一致でGIDへ解決し、0件・複数件・API失敗時は未割り当てと警告を返す |
 | F-15 | 可変レイアウトWBS取込 | `.xlsx` / `.csv` を自由列マッピングし、親子タスクをプレビューして一括登録できる |
 | F-16 | 登録日程 | 通常入力とWBSの開始日・期限を保存し、開始日が期限以前の場合だけAsanaへ送信できる |
-| F-17 | 会社メール認証 | 管理者が事前登録した許可会社ドメインのメールだけへ6桁コードを送り、未登録メールはログイン開始時に拒否する |
+| F-17 | Asanaログイン | 管理者が事前登録した許可会社ドメインのAsanaメールだけが、Asana OAuthで1回ログインできる。端末ごとにsessionを持ち、最後の有効sessionがログアウトした時にOAuthを解除する |
 | F-18 | 利用者分離 | 通常入力、候補、WBS設定、取込履歴、登録履歴をログイン利用者ごとに分離する |
-| F-19 | 利用者別Asana | OAuth利用時は会社メールとAsana profile emailが一致し、指定した1つの社内workspaceに所属する場合だけアクセストークンを暗号化保存し、接続完了までは登録・WBS・履歴APIを利用できない |
+| F-19 | 利用者別Asana | ログインしたAsana profile emailが事前登録メールと一致し、指定した1つの社内workspaceに所属する場合だけアクセストークンを暗号化保存し、利用者自身が見られるprojectだけを利用できる |
 | F-20 | 利用者管理 | 管理者が会社メールの事前登録、利用停止、管理者権限、登録可能なAsanaプロジェクトを利用者ごとに設定できる |
 | F-21 | 履歴検索 | 利用者が自分の通常タスク登録履歴をタスク名・内容・状態で検索できる |
 | F-22 | 配布・運用 | Windows自動起動、配布ZIP、SQLバックアップ、ready health、CIを提供する |
-| F-23 | 本番安全診断 | ProductionではSQL Server、SSL SMTP、同一メール必須のAsana OAuth、Azure OpenAI、HTTPS callback、永続Data Protection鍵が未設定なら起動を拒否し、readyで秘密値を出さず状態を確認できる |
+| F-23 | 本番安全診断 | ProductionではSQL Server、AsanaOAuthログイン、社内workspace、必要scope、Azure OpenAI、HTTPS callback、永続Data Protection鍵が未設定なら起動を拒否し、readyで秘密値を出さず状態を確認できる |
 | F-24 | 利用停止 | 利用停止時に発行済みsessionをすべて失効し、Asana OAuthをprovider側で解除してローカルtokenを消去する。再開時はAsana再接続を必須とする |
 
 ## 可変レイアウトWBS取込
@@ -75,8 +75,8 @@ Excel/CSVから複数のタスクを一括変換する。誤登録を避ける�
 - 初見性: 主要ボタンは次の操作を動詞で示し、画面では「識別キー」「GID」「dry-run」「ロールバック」等を使わず「行の番号」「プロジェクト番号」「登録前チェック」「元に戻す」と表記する。
 - 速度: 外部 API を除く整理・モック登録は一般的な開発 PC で体感待ちを生じさせない。
 - セキュリティ: 秘密情報をクライアント、URL、監査ログへ含めない。入力長と形式をサーバーで検証する。画像OCRはブラウザー内で行い、画像ファイルをAPI/DBへ送信・保存しない。
-- 認証: 本番は事前登録済み会社メールの確認コードとHttpOnly/Secure Cookieを使用し、確認コードはPBKDF2ハッシュ、Asana OAuth tokenは会社メール一致後のData Protection暗号文だけを保存する。
-- 認可: APIは認証と有効な同一メールAsana接続を既定必須とし、接続用APIだけをログイン直後にも許可する。履歴の所有者確認とプロジェクト許可をサーバー側で行い、管理APIは管理者policyを必須とする。
+- 認証: 本番は事前登録済み会社メールのAsana OAuthとHttpOnly/Secure Cookieを使用する。OAuth開始はPKCE S256、改ざん防止state、短時間照合Cookieで保護し、Asana OAuth tokenはData Protection暗号文だけを保存する。
+- 認可: APIは認証、有効なAsana接続、所有者、Asana側とアプリ側のproject許可をサーバー側で確認する。管理APIは管理者policyを必須とする。
 - 乱用防止: メールコード送信・検証の回数制限、全APIの固定窓rate limit、期限切れ・失敗回数超過・session失効を実装する。
 - 可用性: Azure OpenAIまたはGeminiの未設定・失敗時はルールベースへフォールバックし、Development/Testは外部サービス未設定でもモック構成で起動できる。
 - 冪等性: 親タスク作成後に一部サブタスクが失敗した場合、親と成功済みサブタスクを重複作成せず失敗分だけ再試行する。
@@ -93,8 +93,8 @@ Excel/CSVから複数のタスクを一括変換する。誤登録を避ける�
 ## 外部設定
 
 - SQL Server 接続文字列: `ConnectionStrings__TaskCapture`
-- メール認証: `Access__Mode=EmailCode`、許可ドメイン、管理者メール、SMTP設定
-- Asana: PAT方式、または `CredentialMode=PerUserOAuth` とOAuth Client ID/Secret/Redirect URI。同一メール確認は本番で必須。
+- ログイン: `Access__Mode=AsanaOAuth`、許可ドメイン、初期管理者メール
+- Asana: 開発用PAT方式、または本番用 `CredentialMode=PerUserOAuth` とworkspace GID、OAuth Client ID/Secret/HTTPS Redirect URI、必要scope
 - 暗号鍵: `DataProtection__KeysPath`。OAuth token復号に必要なためDBと別にバックアップする。
 - Gemini: `TaskOrganization__Mode=Gemini`、`TaskOrganization__Gemini__ApiKey`または`GEMINI_API_KEY`、必要に応じmodel/timeout。秘密情報はサーバー設定だけに保持する。
 - Azure OpenAI: `TaskOrganization__Mode=AzureOpenAI`、HTTPS endpoint、deployment名、`AZURE_OPENAI_API_KEY`。strict JSON Schemaを使用する。

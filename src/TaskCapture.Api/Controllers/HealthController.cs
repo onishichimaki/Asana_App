@@ -51,8 +51,12 @@ public sealed class HealthController(
                     && !string.IsNullOrWhiteSpace(asana.Value.OAuth.ClientSecret)
                     && !string.IsNullOrWhiteSpace(asana.Value.OAuth.RedirectUri)
                 : !string.IsNullOrWhiteSpace(asana.Value.PersonalAccessToken));
-        var emailReady = access.Value.Mode.Equals("Development", StringComparison.OrdinalIgnoreCase)
-            || (access.Value.AllowedEmailDomains.Length > 0
+        var accessReady = access.Value.Mode.Equals("Development", StringComparison.OrdinalIgnoreCase)
+            || (access.Value.Mode.Equals("AsanaOAuth", StringComparison.OrdinalIgnoreCase)
+                && access.Value.AllowedEmailDomains.Length > 0
+                && asanaReady)
+            || (access.Value.Mode.Equals("EmailCode", StringComparison.OrdinalIgnoreCase)
+                && access.Value.AllowedEmailDomains.Length > 0
                 && (access.Value.EmailCode.Delivery.Mode.Equals("Mock", StringComparison.OrdinalIgnoreCase)
                     || !string.IsNullOrWhiteSpace(access.Value.EmailCode.Delivery.Host)));
         var organizerPrimaryReady = organization.Value.Mode.Equals("RuleBased", StringComparison.OrdinalIgnoreCase)
@@ -73,7 +77,7 @@ public sealed class HealthController(
             asana.Value,
             access.Value);
         var productionConfigurationReady = productionIssues.Count == 0;
-        var ready = databaseReady && asanaReady && emailReady && organizerReady
+        var ready = databaseReady && asanaReady && accessReady && organizerReady
             && productionConfigurationReady;
         return StatusCode(
             ready ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable,
@@ -82,7 +86,8 @@ public sealed class HealthController(
                 status = ready ? "ready" : "not-ready",
                 database = databaseReady,
                 asana = asanaReady,
-                email = emailReady,
+                access = accessReady,
+                email = accessReady,
                 organizer = organizerReady,
                 organizerPrimary = organizerPrimaryReady,
                 productionConfiguration = productionConfigurationReady,

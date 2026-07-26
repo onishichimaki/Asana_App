@@ -345,7 +345,7 @@ function App({ account, onLogout }: AppProps) {
         <h1>Asanaへタスク登録</h1>
         <div className="topbar-actions">
           <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
-          {account.mode === 'EmailCode'
+          {account.mode !== 'Development'
             ? <button type="button" className="account-button" onClick={() => void onLogout()} title={`${account.email} でログイン中。クリックでログアウト`}>
                 <span aria-hidden="true">{(account.displayName || account.email || '?').slice(0, 1).toUpperCase()}</span>
                 <strong>{account.displayName || account.email}</strong>
@@ -360,11 +360,11 @@ function App({ account, onLogout }: AppProps) {
         <button type="button" disabled={connectionBlocked} className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>1件ずつ登録</button>
         <button type="button" disabled={connectionBlocked} className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>{isLauncher ? '一括登録' : 'Excel・CSV一括登録'}</button>
         <button type="button" disabled={connectionBlocked} className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
-        <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>接続・利用設定</button>
+        <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>{account.mode === 'AsanaOAuth' ? 'アカウント・利用設定' : '接続・利用設定'}</button>
       </nav>
 
       {asanaCallbackNotice && <div className={asanaCallbackNotice.kind === 'success' ? 'wbs-message' : 'error-message'} role={asanaCallbackNotice.kind === 'success' ? 'status' : 'alert'}>{asanaCallbackNotice.text}</div>}
-      {connectionBlocked && <div className="connection-required" role="status"><strong>Asanaの接続が必要です</strong><span>会社メールと同じAsanaアカウントを接続すると、タスク登録を利用できます。</span></div>}
+      {connectionBlocked && <div className="connection-required" role="status"><strong>Asanaとの連携が無効です</strong><span>{account.mode === 'AsanaOAuth' ? '一度ログアウトし、Asanaでログインし直してください。' : '会社メールと同じAsanaアカウントを接続すると、タスク登録を利用できます。'}</span></div>}
 
       {mode === 'settings'
         ? <SettingsPanel account={account} onConnectionChanged={setAsanaConnected} />

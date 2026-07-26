@@ -12,7 +12,7 @@ flowchart LR
     Wbs["XLSX / CSV WBS"] --> Parse["ブラウザー内解析・自由列マッピング"] --> Web
     Tray["Windows tray + WebView2"] --> Web
     Web -->|HTTPS JSON| Api["ASP.NET Core API"]
-    Email["会社メール / SMTP"] --> Auth["確認コード認証"]
+    AsanaIdentity["Asanaアカウント"] --> Auth["OAuthログイン / PKCE"]
     Auth --> Api
     Api --> Workflow["Task workflow"]
     Api --> WbsWorkflow["WBS import workflow"]
@@ -37,14 +37,14 @@ flowchart LR
 | コンポーネント | 責務 |
 |---|---|
 | React UI | メイリオUI優先表示、Clipboard、議事録読込、Tesseract.js画像OCR、Web Speech API、親タスクとサブタスク候補、開始日・期限、登録先の編集、実際に解決された担当者と警告の表示 |
-| Auth / settings UI | 会社メール・6桁コード、logout、Asana接続/解除、利用者管理、通常登録履歴検索 |
+| Auth / settings UI | 1ボタンのAsanaログイン、logout、利用者の事前登録・停止・プロジェクト制限、通常登録履歴検索 |
 | WBS UI | 「ファイル → 読取確認 → 登録」の3ステップ、XLSX/CSVのブラウザー内解析、見出し行・列の自動推測、通常は閉じた読取設定、4階層方式、追加項目、登録先選択、検索・絞り込み・親子開閉・100件ごとの表示、登録前の担当者確認、履歴・元に戻す操作 |
 | Task workflow | 状態遷移、親子候補のDB保存、監査、親→子の順序制御、部分失敗時の再開 |
 | WBS import workflow | 登録前の行単位検証、担当者確認、親の日付集約、前回との差分判定、親優先登録、変更行更新、今回作成分の取り消し、失敗行の再開、取込履歴 |
 | RuleBased organizer | API キー不要の決定的なタイトル・担当者・期限抽出と、明示された箇条書きのサブタスク化 |
 | Gemini organizer | GeminiのJSON Schema出力を親候補と0〜6件の実行可能なサブタスクへ変換し、未設定・失敗時はRuleBasedへフォールバック |
 | Azure OpenAI organizer | Azure OpenAI v1のstrict JSON Schema出力をGeminiと共通の検証処理で候補へ変換し、未設定・失敗時はRuleBasedへフォールバック |
-| Asana services | Mock/PAT/利用者別OAuthの切り替え、会社メールとAsanaメールの一致確認、暗号化token更新、workspaceユーザー名の安全なGID解決、project/section一覧取得、project認可、親子登録 |
+| Asana services | Mock/PAT/利用者別OAuthの切り替え、PKCEログイン、事前登録・会社ドメイン・workspace所属の検証、暗号化token更新、workspaceユーザー名の安全なGID解決、project/section一覧取得、project認可、親子登録 |
 | EF Core | SQL Server スキーマ、履歴、登録・監査データ |
 | Launcher | tray、グローバルホットキー、WebView2、クリップボード橋渡し、自動拡大、自動非表示、単一起動、Windowsログイン時自動起動 |
 
@@ -53,9 +53,11 @@ flowchart LR
 | Method | Path | 用途 |
 |---|---|---|
 | GET | `/api/health` | 起動状態、DB/AI/Asana モード確認（秘密情報なし） |
-| GET | `/api/health/ready` | DB・メール・Asana・AI・本番安全設定の起動準備確認 |
-| GET/POST | `/api/auth/me`, `/request-code`, `/verify-code`, `/logout` | 会社メール認証とsession管理 |
-| GET/POST/DELETE | `/api/asana/connection/*` | OAuth開始・callback・状態・解除 |
+| GET | `/api/health/ready` | DB・ログイン・Asana・AI・本番安全設定の起動準備確認 |
+| GET/POST | `/api/auth/me`, `/api/auth/logout` | ログイン状態とsession管理 |
+| GET | `/api/auth/asana/start`, `/api/auth/asana/callback` | Asana OAuthログイン開始・callback |
+| POST | `/api/auth/request-code`, `/api/auth/verify-code` | 開発・切替用メール確認コード |
+| GET/POST/DELETE | `/api/asana/connection/*` | EmailCode方式向けOAuth接続・状態・解除 |
 | POST | `/api/task-requests/organize` | 入力保存と候補生成 |
 | PUT | `/api/task-candidates/{id}` | 確認・修正した候補の保存 |
 | POST | `/api/task-candidates/{id}/register` | 親候補とサブタスクの保存、Asana/Mockへの親子登録 |
@@ -73,7 +75,7 @@ flowchart LR
 | POST | `/api/wbs-imports/batches/{id}/register` | 親優先のAsana/Mock一括登録と再開 |
 | POST | `/api/wbs-imports/batches/{id}/undo` | 今回新しく作ったAsanaタスクだけを取り消す |
 | GET | `/api/wbs-imports/batches/{id}/errors.csv` | 未登録行と理由のCSV出力 |
-| GET/PUT | `/api/admin/users`, `/api/admin/users/{id}/access` | 利用者停止・管理者・project制限 |
+| GET/POST/PUT | `/api/admin/users`, `/api/admin/users/{id}/access` | 利用者の事前登録・停止・管理者・project制限 |
 | GET | `/api/admin/audit` | 管理者向け監査イベント |
 
 ## データモデル
@@ -115,7 +117,7 @@ erDiagram
     WbsImportRows { guid Id PK guid WbsImportBatchId FK guid ParentRowId FK string SourceKey date StartDate date DueDate string ChangeType string Status string ExternalTaskGid }
 ```
 
-全16テーブルに必要な監査用UTC日時を持たせる。PAT・OAuth Client Secret・接続文字列は保持しない。OAuth tokenはData Protection暗号文だけ、メール確認コードはsalt付きPBKDF2ハッシュだけを保持する。
+全16テーブルに必要な監査用UTC日時を持たせる。PAT・OAuth Client Secret・接続文字列は保持しない。OAuth tokenはData Protection暗号文だけを保持する。`EmailLoginCodes` は開発・切替用EmailCode方式のみで使用する。
 
 ## 認証・認可フロー
 
@@ -125,28 +127,27 @@ sequenceDiagram
     participant U as 利用者
     participant W as React
     participant A as API
-    participant M as SMTP
+    participant O as Asana OAuth
     participant D as SQL Server
     Admin->>A: 会社メールを事前登録
     A->>D: 有効な利用者を保存
-    U->>W: 事前登録済み会社メールを入力
-    W->>A: request-code
-    A->>D: 事前登録・利用中を確認
-    A->>D: hash済みコード・期限を保存
-    A->>M: 6桁コード送信
-    U->>W: コード入力
-    W->>A: verify-code
-    A->>D: 利用者・session・監査を保存
-    A-->>W: HttpOnly Cookie
-    W->>A: 同じメールのAsanaをOAuth接続
-    A->>D: 一致確認済み暗号化tokenを保存
+    U->>W: Asanaでログインを押す
+    W->>A: OAuth開始
+    A-->>W: PKCE・state・短時間照合Cookie
+    W->>O: Asana本人確認と同意
+    O->>A: authorization code・state
+    A->>O: code + PKCE verifierでtoken交換
+    A->>O: profile email・workspaces取得
+    A->>D: 事前登録・利用中・会社ドメイン・workspaceを確認
+    A->>D: session・暗号化token・監査を同時保存
+    A-->>W: HttpOnly session Cookie
     W->>A: タスク/WBS/履歴 API
     A->>D: session・Asana接続・所有者・project許可を確認
 ```
 
-Productionでは `EmailCode + SMTP` だけを許可し、Development認証やMockメールでの起動を拒否する。`Access:AdminEmails` は最初の管理者だけをサーバー設定で許可するbootstrapで、以後は管理APIの事前登録済みUsersだけへcodeを送る。APIはfallback policyで認証と有効な同一メールAsana接続を既定必須とし、`/api/auth/me`、health、SPAだけを匿名許可、Asana接続APIだけを接続前にも許可する。利用者IDはHTTP headerから受け取らず、検証済みclaimsから `ICurrentUserContext` が作る安定キーを使う。
+Productionでは `AsanaOAuth` ログインだけを許可し、Development認証やEmailCodeでの起動を拒否する。`Access:AdminEmails` は最初の管理者だけをサーバー設定で許可するbootstrapで、以後は管理APIの事前登録済みUsersだけがログインできる。APIはfallback policyで認証と有効なAsana接続を既定必須とし、匿名許可はログイン開始・callback、`/api/auth/me`、health、SPAに限定する。利用者IDはHTTP headerから受け取らず、検証済みclaimsから `ICurrentUserContext` が作る安定キーを使う。
 
-Asana OAuth stateはData Protectionで改ざん防止し10分で失効する。callback後に `/users/me` のemailとworkspacesを取得し、ログイン中の会社メールと大文字小文字を無視して一致し、かつ `DefaultWorkspaceGid` の社内workspaceに所属する場合だけtokenを暗号化保存する。不一致・email欠損・workspace非所属・旧connectionは接続し直すまで使用しない。期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。利用停止時は全sessionを失効し、AsanaへOAuth解除を要求したうえで、結果にかかわらずローカルtokenを消去する。
+Asana OAuthログインはPKCE S256、Data Protectionで保護したstate、HttpOnlyの短時間照合Cookieをすべて検証する。callback後に `/users/me` のemailとworkspacesを取得し、許可会社ドメインの事前登録済みメールかつ `DefaultWorkspaceGid` の社内workspaceに所属する場合だけ、sessionとtokenを保存する。期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。通常ログアウトは現在端末のsessionを失効し、ほかに有効sessionがない時だけAsanaへOAuth解除を要求してローカルtokenを消去する。管理者による利用停止は全sessionとOAuthを即時失効する。
 
 ## 状態遷移
 
@@ -178,7 +179,7 @@ WBSのまとまりは `Ready / Invalid → Registering → Registered / Partiall
 
 - ブラウザーには PAT、AI キー、DB 接続文字列を返さない。
 - 認証cookieはHttpOnly、SameSite=Lax、本番Secureとし、DB sessionの失効・期限・利用者停止を毎回検証する。
-- メールコードは10分、既定5回まで。送信は1分間隔・1時間5回まで、全APIはIP/利用者単位の固定窓rate limitを持つ。
+- OAuth開始は既定10分で失効し、改ざん防止state、PKCE、照合Cookieをすべて必須とする。全APIはIP/利用者単位の固定窓rate limitを持つ。
 - OAuth tokenはData Protection暗号文だけを保存し、鍵フォルダーをDBとは別に永続化・バックアップする。
 - task候補、通常履歴、WBS profile/batch、projectお気に入りはclaims由来の利用者へ必ずスコープする。
 - Gemini APIキーはUser Secretsまたは配備先Secret Storeだけから読み、入力本文・キー・SDK設定オブジェクトをログへ出さない。
@@ -187,8 +188,8 @@ WBSのまとまりは `Ready / Invalid → Registering → Registered / Partiall
 - API DTO の文字数・日付・JSON 形式を検証する。
 - `HttpClient` の Authorization は Asana 専用クライアントでのみ設定する。
 - ログは例外メッセージを必要最小限にし、認証ヘッダー/設定オブジェクトを出力しない。
-- ProductionはSQL Server、EmailCode + SSL SMTP、利用者別Asana OAuth + 同一メール、Azure OpenAI、HTTPS callback、永続Data Protection鍵が揃わないと起動を拒否する。全APIのrate limitとTLS終端を維持する。
+- ProductionはSQL Server、AsanaOAuthログイン、社内workspace・必要scope、Azure OpenAI、HTTPS callback、永続Data Protection鍵が揃わないと起動を拒否する。全APIのrate limitとTLS終端を維持する。
 
 ## 実装根拠と引き継ぎ
 
-人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、Azure OpenAI adapter、実 SQL Server、通常入力とWBSのAsana限定projectへの担当者付き親子登録、Asana/会社メール一致拒否は自動テスト済みである。未確認の本番Azure/SMTP/OAuth実通信、HTTPS配備と実端末 QAは inventory のリスクまたは次アクションへ分離している。
+人向けのクリック可能な構成図は `docs/architecture.html`、機械可読の module/API/DB/integration/data-flow inventory は `docs/architecture.json`、更新手順は `docs/architecture_readme.md` にある。Gemini構造化整理、Azure OpenAI adapter、実 SQL Server、通常入力とWBSのAsana限定projectへの担当者付き親子登録、PKCE付きAsanaログインは自動テスト済みである。未確認の本番Azure/Asana OAuth実通信、HTTPS配備と実端末 QAは inventory のリスクまたは次アクションへ分離している。

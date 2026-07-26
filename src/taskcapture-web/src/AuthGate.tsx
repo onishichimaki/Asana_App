@@ -4,7 +4,7 @@ import './AuthGate.css'
 
 export type AuthAccount = {
   authenticated: boolean
-  mode: 'Development' | 'EmailCode'
+  mode: 'Development' | 'EmailCode' | 'AsanaOAuth'
   email: string | null
   displayName: string | null
   isAdmin: boolean
@@ -26,6 +26,7 @@ type RequestCodeResponse = {
 }
 
 function AuthGate({ children }: AuthGateProps) {
+  const launcherLogin = new URLSearchParams(window.location.search).get('launcher') === '1'
   const [account, setAccount] = useState<AuthAccount | null>(null)
   const [step, setStep] = useState<LoginStep>('email')
   const [email, setEmail] = useState('')
@@ -33,7 +34,19 @@ function AuthGate({ children }: AuthGateProps) {
   const [maskedEmail, setMaskedEmail] = useState('')
   const [developmentCode, setDevelopmentCode] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(() => {
+    const result = new URLSearchParams(window.location.search).get('login')
+    if (!result || result === 'connected') return null
+    return ({
+      cancelled: 'Asanaログインをキャンセルしました。',
+      expired: 'ログインの有効時間が切れました。もう一度お試しください。',
+      'wrong-workspace': '会社のAsanaワークスペースを利用できるアカウントでログインしてください。',
+      'not-registered': 'このメールはアプリに利用登録されていません。管理者に連絡してください。',
+      inactive: 'この利用者はアプリの使用を停止されています。',
+      'company-email': '許可された会社メールのAsanaアカウントでログインしてください。',
+      error: 'Asanaログインを完了できませんでした。もう一度お試しください。',
+    } as Record<string, string>)[result] ?? 'Asanaログインを完了できませんでした。'
+  })
 
   const loadAccount = async () => {
     const result = await requestJson<AuthAccount>('/api/auth/me')
@@ -42,6 +55,11 @@ function AuthGate({ children }: AuthGateProps) {
   }
 
   useEffect(() => {
+    const currentUrl = new URL(window.location.href)
+    if (currentUrl.searchParams.has('login')) {
+      currentUrl.searchParams.delete('login')
+      window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`)
+    }
     loadAccount().catch(() => setMessage('アプリへ接続できません。APIが起動しているか確認してください。'))
   }, [])
 
@@ -108,12 +126,24 @@ function AuthGate({ children }: AuthGateProps) {
       <section className="auth-card" aria-labelledby="sign-in-title">
         <div className="auth-mark" aria-hidden="true">✓</div>
         <p className="auth-eyebrow">TASK CAPTURE</p>
-        <h1 id="sign-in-title">会社メールでログイン</h1>
+        <h1 id="sign-in-title">{account.mode === 'AsanaOAuth' ? 'Asanaでログイン' : '会社メールでログイン'}</h1>
         <p className="auth-description">
-          管理者が登録した会社メールだけ利用できます。メールに届く6桁コードでログインします。
+          {account.mode === 'AsanaOAuth'
+            ? '管理者が利用登録した会社メールのAsanaアカウントでログインします。'
+            : '管理者が登録した会社メールだけ利用できます。メールに届く6桁コードでログインします。'}
         </p>
 
-        {step === 'email'
+        {account.mode === 'AsanaOAuth'
+          ? <div className="auth-asana-login">
+              <a className="auth-asana-button" href={`/api/auth/asana/start${launcherLogin ? '?launcher=true' : ''}`} onClick={() => { setBusy(true); setMessage(null) }} aria-busy={busy}>
+                <span aria-hidden="true">a</span>{busy ? 'Asanaを開いています…' : 'Asanaでログイン'}
+              </a>
+              <ul>
+                <li>自分が見られるAsanaプロジェクトだけ表示します</li>
+                <li>パスワードはこのアプリに保存しません</li>
+              </ul>
+            </div>
+          : step === 'email'
           ? <form onSubmit={requestCode}>
               <label htmlFor="login-email">会社メールアドレス</label>
               <input
@@ -160,7 +190,9 @@ function AuthGate({ children }: AuthGateProps) {
             </form>}
 
         {message && <p className="auth-error" role="alert">{message}</p>}
-        <p className="auth-note">確認コードは短時間で無効になります。届かない場合は迷惑メールも確認してください。</p>
+        <p className="auth-note">{account.mode === 'AsanaOAuth'
+          ? `利用できるメール：${domainHint}。未登録の場合はアプリ管理者へ連絡してください。`
+          : '確認コードは短時間で無効になります。届かない場合は迷惑メールも確認してください。'}</p>
       </section>
     </main>
   )

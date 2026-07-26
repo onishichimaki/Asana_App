@@ -144,7 +144,7 @@ export default function SettingsPanel({ account, onConnectionChanged }: { accoun
     <div className="settings-page">
       <section className="panel settings-card">
         <div className="section-heading">
-          <div><h2>Asanaとの接続</h2><p>会社メールと同じAsanaアカウントを接続します。登録先は、そのアカウントで見られるプロジェクトから選べます。</p></div>
+          <div><h2>{account.mode === 'AsanaOAuth' ? 'Asanaログイン' : 'Asanaとの接続'}</h2><p>{account.mode === 'AsanaOAuth' ? 'Asanaで本人確認済みです。自分が見られるプロジェクトだけを登録先に選べます。' : '会社メールと同じAsanaアカウントを接続します。登録先は、そのアカウントで見られるプロジェクトから選べます。'}</p></div>
           <span className={`settings-status ${asana?.connected ? 'connected' : ''}`}>{asana?.connected ? '接続済み' : '未接続'}</span>
         </div>
         {!asana
@@ -156,7 +156,8 @@ export default function SettingsPanel({ account, onConnectionChanged }: { accoun
                 <div><dt>ワークスペース</dt><dd>{asana.workspaceName || '自動選択'}</dd></div>
               </dl>}
               {asana.message && <p className="settings-muted">{asana.message}</p>}
-              {asana.credentialMode === 'PerUserOAuth' && (asana.connected
+              {account.mode === 'AsanaOAuth' && asana.connected && <p className="settings-muted">この端末からログアウトします。ほかの端末でも利用中の場合、Asana連携は最後の端末がログアウトするまで維持されます。</p>}
+              {account.mode !== 'AsanaOAuth' && asana.credentialMode === 'PerUserOAuth' && (asana.connected
                 ? <button type="button" className="secondary-button" disabled={busy === 'asana'} onClick={() => void disconnectAsana()}>Asana接続を解除</button>
                 : <button type="button" className="primary-button" disabled={busy === 'asana'} onClick={() => void connectAsana()}>{busy === 'asana' ? '準備しています…' : '同じメールのAsanaを接続'}</button>)}
             </>}
