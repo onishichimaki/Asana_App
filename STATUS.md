@@ -56,6 +56,7 @@
 - Windowsランチャーから1件登録とExcel・CSVまとめ登録を切り替え、まとめ登録時は確認しやすい大きさへ自動拡大
 - launcherの単一起動と、trayから切替可能なWindowsログイン時自動起動
 - launcher起動時の画面右下配置と、初期入力をスクロールなしで完結できる1段メニュー
+- Asana認証許可前でも通常入力とExcel/CSV読取・マッピングを説明できる、保存・送信なしの画面確認モード
 - GitHub Actions CI、API/launcher配布ZIPスクリプト、SQL backup/VERIFYONLYスクリプト、ready health
 - Production必須設定の安全側起動チェック、秘密値を返さないready診断、配布設定例、定期backupタスク登録、実端末受入チェックリスト
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
@@ -132,6 +133,8 @@
 - 実起動診断: Development + SQL Server / Gemini / Asana APIで `/api/health/ready` が `TASK_CAPTURE_READY=true`を返すことを確認
 - Asana callback UI QA: 認証失敗時に同一メールの案内を表示し、`launcher=1`を保ったまま認証パラメータのみ消去、consoleエラー0を確認
 - 全社利用UI QA: 管理者の会社メール事前登録フォーム、Asana未接続時の業務メニュー無効化と接続案内をPC/390px幅で確認し、横スクロール・consoleエラー0
+- 認証前UI QA: ランチャーとWebで「ログインせず画面を見る」から通常入力・見本整理・一括登録画面へ遷移し、見本project/section、履歴・設定の無効化、Asana送信遮断を確認
+- 認証前データ境界: 固有文字列を画面確認モードで整理後、SQL Serverの`TaskRequests`が0件であり、入力が保存されないことを確認
 - Release配布: `dist/TaskCapture-win-x64.zip`の生成に成功し、API、Windowsランチャー、本番設定例、起動案内と秘密ファイルの非混入を確認
 
 ## 未完了 / 外部設定待ち

@@ -12,8 +12,24 @@ type Props = {
   onResolvedLabel?: (label: { projectName: string | null; sectionName: string | null }) => void
   onEffectiveProjectGid?: (projectGid: string) => void
   disabled?: boolean
+  previewMode?: boolean
   idPrefix: string
 }
+
+const previewCatalog: ProjectCatalog = {
+  defaultProjectGid: '1000000000000001',
+  projects: [
+    { gid: '1000000000000001', name: '業務改善プロジェクト（見本）', isFavorite: true },
+    { gid: '1000000000000002', name: '新商品準備（見本）', isFavorite: false },
+    { gid: '1000000000000003', name: '社内イベント（見本）', isFavorite: false },
+  ],
+}
+
+const previewSections: SectionOption[] = [
+  { gid: '2000000000000001', name: 'これから着手（見本）' },
+  { gid: '2000000000000002', name: '進行中（見本）' },
+  { gid: '2000000000000003', name: '確認待ち（見本）' },
+]
 
 export default function AsanaDestinationPicker({
   projectGid,
@@ -22,6 +38,7 @@ export default function AsanaDestinationPicker({
   onResolvedLabel,
   onEffectiveProjectGid,
   disabled = false,
+  previewMode = false,
   idPrefix,
 }: Props) {
   const [catalog, setCatalog] = useState<ProjectCatalog | null>(null)
@@ -33,6 +50,12 @@ export default function AsanaDestinationPicker({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (previewMode) {
+      setCatalog(previewCatalog)
+      setProjectsLoading(false)
+      setError(null)
+      return
+    }
     let active = true
     setProjectsLoading(true)
     requestJson<ProjectCatalog>('/api/asana/projects')
@@ -50,7 +73,7 @@ export default function AsanaDestinationPicker({
         if (active) setProjectsLoading(false)
       })
     return () => { active = false }
-  }, [])
+  }, [previewMode])
 
   const effectiveProjectGid = projectGid || catalog?.defaultProjectGid || ''
 
@@ -62,6 +85,11 @@ export default function AsanaDestinationPicker({
     let active = true
     if (!effectiveProjectGid) {
       setSections([])
+      return
+    }
+    if (previewMode) {
+      setSections(previewSections)
+      setSectionsLoading(false)
       return
     }
     setSectionsLoading(true)
@@ -76,7 +104,7 @@ export default function AsanaDestinationPicker({
         if (active) setSectionsLoading(false)
       })
     return () => { active = false }
-  }, [effectiveProjectGid])
+  }, [effectiveProjectGid, previewMode])
 
   const projectName = useMemo(() => {
     const gid = projectGid || catalog?.defaultProjectGid
@@ -106,6 +134,15 @@ export default function AsanaDestinationPicker({
 
   const toggleFavorite = async () => {
     if (!selectedProject) return
+    if (previewMode) {
+      setCatalog(current => current ? {
+        ...current,
+        projects: current.projects.map(project => project.gid === selectedProject.gid
+          ? { ...project, isFavorite: !project.isFavorite }
+          : project),
+      } : current)
+      return
+    }
     setFavoriteBusy(true)
     try {
       await requestJson(`/api/asana/projects/${selectedProject.gid}/favorite`, {
@@ -159,7 +196,7 @@ export default function AsanaDestinationPicker({
           </select>
           {selectedProject && <button type="button" className={`favorite-button ${selectedProject.isFavorite ? 'active' : ''}`} disabled={disabled || favoriteBusy} onClick={() => void toggleFavorite()} aria-label={selectedProject.isFavorite ? 'お気に入りから外す' : 'お気に入りに追加'} title={selectedProject.isFavorite ? 'お気に入りから外す' : 'お気に入りに追加'}>{selectedProject.isFavorite ? '★' : '☆'}</button>}
         </div>
-        <small>タスクを追加するプロジェクトを名前で選べます。</small>
+        <small>{previewMode ? '見本のプロジェクトです。ログイン後は自分が見られる候補に変わります。' : 'タスクを追加するプロジェクトを名前で選べます。'}</small>
       </div>
 
       <div className="field">

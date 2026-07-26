@@ -78,6 +78,46 @@ function readableSource(source: InputSource) {
   return labels[source]
 }
 
+function localDateAfter(days: number) {
+  const value = new Date()
+  value.setDate(value.getDate() + days)
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+}
+
+function buildPreviewCandidate(rawText: string): TaskCandidate {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const assignee = rawText.match(/担当(?:者)?\s*[:：]?\s*([^\s,、。\n]+)/)?.[1] ?? null
+  const dueDate = /明日/.test(rawText) ? localDateAfter(1) : /今日|本日/.test(rawText) ? localDateAfter(0) : null
+  const titleSource = lines.find(line => !/^(担当(?:者)?|期限|開始日?|サブタスク)\s*[:：]/.test(line)) ?? '新しいタスク'
+  const title = titleSource
+    .replace(/^[-・*●□■✓\d.)）\s]+/, '')
+    .replace(/(?:担当(?:者)?|期限|開始日?)\s*[:：].*$/, '')
+    .trim()
+    .slice(0, 200) || '新しいタスク'
+  const subtasks = lines
+    .slice(1)
+    .filter(line => /^[-・*●□■✓]|^\d+[.)）]/.test(line))
+    .map(line => line.replace(/^[-・*●□■✓\d.)）\s]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 30)
+
+  return {
+    id: `preview-${Date.now()}`,
+    taskRequestId: `preview-request-${Date.now()}`,
+    title,
+    description: rawText.trim(),
+    assignee,
+    startDate: null,
+    dueDate,
+    subtasks,
+    projectGid: null,
+    sectionGid: null,
+    tags: [],
+    customFields: {},
+    priority: null,
+  }
+}
+
 async function readMinutesText(file: File) {
   const buffer = await file.arrayBuffer()
   try {
@@ -93,6 +133,7 @@ type AppProps = {
 }
 
 function App({ account, onLogout }: AppProps) {
+  const previewMode = account.previewMode
   const [asanaConnected, setAsanaConnected] = useState(account.asanaConnected)
   const connectionBlocked = account.asanaConnectionRequired && !asanaConnected
   const [mode, setMode] = useState<'capture' | 'wbs' | 'history' | 'settings'>(asanaCallback || connectionBlocked ? 'settings' : 'capture')
@@ -115,14 +156,18 @@ function App({ account, onLogout }: AppProps) {
   const isWorking = busy !== null || mediaBusy !== null || listening
 
   useEffect(() => {
-    requestJson<HealthResponse>('/api/health').then(setHealth).catch(() => setHealth(null))
+    if (previewMode) {
+      setHealth(null)
+    } else {
+      requestJson<HealthResponse>('/api/health').then(setHealth).catch(() => setHealth(null))
+    }
     inputRef.current?.focus()
     if (asanaCallback) {
       const cleanedUrl = new URL(window.location.href)
       cleanedUrl.searchParams.delete('asana')
       window.history.replaceState({}, '', `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`)
     }
-  }, [])
+  }, [previewMode])
 
   useEffect(() => {
     if (connectionBlocked && mode !== 'settings') setMode('settings')
@@ -304,6 +349,11 @@ function App({ account, onLogout }: AppProps) {
     if (!rawText.trim()) { setMessage('登録したい内容を入力してください。'); inputRef.current?.focus(); return }
     setBusy('organize'); setMessage(null); setRegistration(null)
     try {
+      if (previewMode) {
+        setCandidate(toDraft(buildPreviewCandidate(rawText)))
+        window.setTimeout(() => document.getElementById('candidate-title')?.focus(), 0)
+        return
+      }
       const result = await requestJson<OrganizeResponse>('/api/task-requests/organize', { method: 'POST', body: JSON.stringify({ rawText, source }) })
       setCandidate(toDraft(result.candidate)); window.setTimeout(() => document.getElementById('candidate-title')?.focus(), 0)
     } catch (error) {
@@ -318,6 +368,10 @@ function App({ account, onLogout }: AppProps) {
     if (!candidate.title.trim()) { setMessage('タスクタイトルを入力してください。'); document.getElementById('candidate-title')?.focus(); return }
     if (candidate.startDate && !candidate.dueDate) { setMessage('開始日を設定する場合は期限も指定してください。'); return }
     if (candidate.startDate && candidate.dueDate && candidate.startDate > candidate.dueDate) { setMessage('開始日は期限以前の日付にしてください。'); return }
+    if (previewMode) {
+      setMessage('画面確認モードではAsanaへ送信しません。ログインすると、この内容を実際に登録できます。')
+      return
+    }
     setBusy('register'); setMessage(null)
     try {
       const result = await requestJson<RegistrationResponse>(`/api/task-candidates/${candidate.id}/register`, { method: 'POST', body: JSON.stringify(candidatePayload(candidate)) })
@@ -344,8 +398,14 @@ function App({ account, onLogout }: AppProps) {
       <header className="topbar">
         <h1>Asanaへタスク登録</h1>
         <div className="topbar-actions">
-          <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>
-          {account.mode !== 'Development'
+          {previewMode
+            ? <div className="connection preview-connection" title="入力はサーバーへ送信されません"><span aria-hidden="true" />画面確認中</div>
+            : <div className={`connection ${health ? 'online' : 'offline'}`} title={health ? `DB: ${health.database} / AI: ${health.organizer} / Asana: ${health.asana}` : 'APIへ接続できません'}><span aria-hidden="true" />{health ? 'API接続' : '未接続'}</div>}
+          {previewMode
+            ? <button type="button" className="account-button preview-account" onClick={() => void onLogout()} title="ログイン画面へ戻る">
+                <span aria-hidden="true">見</span><strong>見学終了</strong>
+              </button>
+            : account.mode !== 'Development'
             ? <button type="button" className="account-button" onClick={() => void onLogout()} title={`${account.email} でログイン中。クリックでログアウト`}>
                 <span aria-hidden="true">{(account.displayName || account.email || '?').slice(0, 1).toUpperCase()}</span>
                 <strong>{account.displayName || account.email}</strong>
@@ -359,10 +419,11 @@ function App({ account, onLogout }: AppProps) {
       <nav className="mode-switch" aria-label="登録方法">
         <button type="button" disabled={connectionBlocked} className={mode === 'capture' ? 'active' : ''} onClick={() => setMode('capture')}>1件ずつ登録</button>
         <button type="button" disabled={connectionBlocked} className={mode === 'wbs' ? 'active' : ''} onClick={() => setMode('wbs')}>{isLauncher ? '一括登録' : 'Excel・CSV一括登録'}</button>
-        <button type="button" disabled={connectionBlocked} className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
-        <button type="button" className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>{account.mode === 'AsanaOAuth' ? 'アカウント・利用設定' : '接続・利用設定'}</button>
+        <button type="button" disabled={connectionBlocked || previewMode} title={previewMode ? 'ログイン後に利用できます' : undefined} className={mode === 'history' ? 'active' : ''} onClick={() => setMode('history')}>登録履歴</button>
+        <button type="button" disabled={previewMode} title={previewMode ? 'ログイン後に利用できます' : undefined} className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}>{account.mode === 'AsanaOAuth' ? 'アカウント・利用設定' : '接続・利用設定'}</button>
       </nav>
 
+      {previewMode && <div className="preview-banner" role="status"><strong>画面確認モード</strong><span>入力内容をこのアプリのサーバーへ送信せず、履歴保存とAsana登録も行いません。</span><button type="button" onClick={() => void onLogout()}>ログインへ戻る</button></div>}
       {asanaCallbackNotice && <div className={asanaCallbackNotice.kind === 'success' ? 'wbs-message' : 'error-message'} role={asanaCallbackNotice.kind === 'success' ? 'status' : 'alert'}>{asanaCallbackNotice.text}</div>}
       {connectionBlocked && <div className="connection-required" role="status"><strong>Asanaとの連携が無効です</strong><span>{account.mode === 'AsanaOAuth' ? '一度ログアウトし、Asanaでログインし直してください。' : '会社メールと同じAsanaアカウントを接続すると、タスク登録を利用できます。'}</span></div>}
 
@@ -371,7 +432,7 @@ function App({ account, onLogout }: AppProps) {
         : mode === 'history'
         ? <HistoryPanel />
         : mode === 'wbs'
-        ? <WbsImport />
+        ? <WbsImport previewMode={previewMode} />
         : <>
 
       <section className="panel input-panel" aria-labelledby="input-heading">
@@ -429,6 +490,7 @@ function App({ account, onLogout }: AppProps) {
           <div className="full-field">
             <AsanaDestinationPicker
               idPrefix="capture"
+              previewMode={previewMode}
               projectGid={candidate.projectGid ?? ''}
               sectionGid={candidate.sectionGid ?? ''}
               onChange={(projectGid, sectionGid) => {
@@ -441,7 +503,7 @@ function App({ account, onLogout }: AppProps) {
           <div className="field"><label htmlFor="priority">優先度</label><select id="priority" value={candidate.priority ?? ''} onChange={(event) => setDraftField('priority', event.target.value || null)}><option value="">未設定</option><option value="low">低</option><option value="normal">通常</option><option value="high">高</option><option value="urgent">緊急</option></select></div>
           <div className="field full-field"><label htmlFor="custom-fields">追加項目（上級者向け）</label><textarea id="custom-fields" rows={3} value={candidate.customFieldsText} placeholder={'{"項目番号":"値"}'} onChange={(event) => setDraftField('customFieldsText', event.target.value)} /></div>
         </div></details>
-        <button type="button" className="asana-button" onClick={register} disabled={busy !== null || Boolean(registration)}>{busy === 'register' ? <span className="spinner" aria-hidden="true" /> : <span className="check" aria-hidden="true">✓</span>}{busy === 'register' ? '登録しています…' : registration ? '登録済み' : 'この内容でAsanaへ登録'}</button>
+        <button type="button" className={`asana-button ${previewMode ? 'preview-register' : ''}`} onClick={register} disabled={busy !== null || Boolean(registration)}>{busy === 'register' ? <span className="spinner" aria-hidden="true" /> : <span className="check" aria-hidden="true">✓</span>}{busy === 'register' ? '登録しています…' : registration ? '登録済み' : previewMode ? 'ログインするとAsanaへ登録できます' : 'この内容でAsanaへ登録'}</button>
       </section>}
 
       {registration && <section className="success-card" aria-live="polite"><div className="success-icon" aria-hidden="true">✓</div><div><strong>{registration.provider === 'Mock' ? 'モックへ登録しました' : 'Asanaへ登録しました'}</strong><p>{registration.externalTaskGid ? `Task ID: ${registration.externalTaskGid}` : '登録履歴を保存しました。'}{registration.subtasks.length > 0 ? ` / サブタスク ${registration.subtasks.filter((item) => item.succeeded).length}件` : ''}</p>{registration.resolvedAssigneeName && <p className="assignee-result">担当者: {registration.resolvedAssigneeName}</p>}{registration.warningMessage && <p className="registration-warning">! {registration.warningMessage}</p>}{registration.externalTaskUrl && <a href={registration.externalTaskUrl} target="_blank" rel="noreferrer">Asanaで確認する ↗</a>}</div><button type="button" onClick={reset}>続けて登録</button></section>}

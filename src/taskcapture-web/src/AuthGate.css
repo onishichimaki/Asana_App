@@ -227,6 +227,97 @@
   line-height:1.5;
 }
 
+.auth-preview {
+  display:grid;
+  gap:10px;
+  margin-top:18px;
+  padding:14px;
+  border:1px solid #d8dfeb;
+  border-radius:11px;
+  background:#f7f9fc;
+}
+
+.auth-preview strong,.auth-preview small {
+  display:block;
+}
+
+.auth-preview strong {
+  color:#26344b;
+  font-size:.82rem;
+}
+
+.auth-preview small {
+  margin-top:3px;
+  color:#6d7888;
+  font-size:.7rem;
+}
+
+.auth-preview button {
+  min-height:42px;
+  border:1px solid #3156d3;
+  border-radius:9px;
+  color:#2949b8;
+  background:#fff;
+  cursor:pointer;
+  font-weight:800;
+}
+
+.auth-preview button:hover {
+  background:#eef3ff;
+}
+
+.launcher-auth-shell {
+  align-items:start;
+  padding:8px;
+}
+
+.launcher-auth-shell .auth-card {
+  padding:18px;
+}
+
+.launcher-auth-shell .auth-mark {
+  width:38px;
+  height:38px;
+  margin-bottom:10px;
+}
+
+.launcher-auth-shell .auth-description {
+  margin:6px 0 12px;
+}
+
+.launcher-auth-shell .auth-asana-login {
+  gap:9px;
+}
+
+.launcher-auth-shell .auth-preview {
+  grid-template-columns:1fr;
+  gap:6px;
+  margin-top:0;
+  padding:10px;
+}
+
+.launcher-auth-shell .auth-preview>div {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.launcher-auth-shell .auth-preview small {
+  margin-top:0;
+  text-align:right;
+}
+
+.launcher-auth-shell .auth-preview button {
+  min-height:38px;
+  padding:6px 10px;
+}
+
+.launcher-auth-shell .auth-note {
+  margin-top:10px;
+  padding-top:9px;
+}
+
 .auth-loading {
   display:flex;
   align-items:center;
