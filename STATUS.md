@@ -57,6 +57,7 @@
 - launcherの単一起動と、trayから切替可能なWindowsログイン時自動起動
 - launcher起動時の画面右下配置と、初期入力をスクロールなしで完結できる1段メニュー
 - Asana認証許可前でも通常入力とExcel/CSV読取・マッピングを説明できる、保存・送信なしの画面確認モード
+- Release Assetから会社の非公開GitHubへ取り込み、Codexで検査し、オンプレミスへ配備する初心者向け導入手順
 - GitHub Actions CI、API/launcher配布ZIPスクリプト、SQL backup/VERIFYONLYスクリプト、ready health
 - Production必須設定の安全側起動チェック、秘密値を返さないready診断、配布設定例、定期backupタスク登録、実端末受入チェックリスト
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
