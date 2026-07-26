@@ -4,9 +4,9 @@ PC・iPhone・iPadから、文章・貼り付け・音声・画像・議事録�
 
 ## 主な機能
 
-- 会社メールへ届く6桁コードでログイン（パスワード保存なし）
+- 管理者が事前登録した会社メールのAsanaアカウントで1回ログイン
 - 利用者ごとの履歴分離、利用停止、管理者設定、プロジェクト制限、監査ログ
-- テキスト、貼り付け、クリップボード、Web音声入力、日本語画像OCR、TXT/MD/CSV議事録
+- テキスト、貼り付け、クリップボード、マイクのWeb音声入力、日本語画像OCR、TXT/MD/CSV議事録
 - GeminiまたはAzure OpenAIによるタイトル・説明・担当者・開始日・期限・サブタスク整理
 - 外部AI未設定・失敗時のルールベース処理
 - 登録前の確認・修正、Asanaプロジェクト検索・お気に入り・セクション選択
@@ -70,28 +70,18 @@ dotnet user-secrets set "ConnectionStrings:TaskCapture" "Server=DESKTOP-RQ3T767;
 
 ## 会社メールの個別アカウント
 
-Entra IDは不要です。管理者が事前登録した会社メールだけに確認コードを送り、メールアドレスごとに個別アカウントを作ります。パスワードは保持しません。
+Entra IDとSMTPは不要です。本番では「Asanaでログイン」の1回で本人確認とAsana API連携を完了します。アプリはAsanaパスワードを受け取りません。
 
-本番環境の主な設定:
+1. 初期管理者のメールを `Access__AdminEmails__0` に設定する。
+2. 初期管理者がAsanaでログインする。
+3. 「アカウント・利用設定」で社員の会社メールを事前登録する。
+4. 社員が同じ会社メールのAsanaでログインする。
 
-```text
-Access__Mode=EmailCode
-Access__AllowedEmailDomains__0=example.co.jp
-Access__AdminEmails__0=admin@example.co.jp
-Access__EmailCode__Delivery__Mode=Smtp
-Access__EmailCode__Delivery__Host=smtp.example.co.jp
-Access__EmailCode__Delivery__Port=587
-Access__EmailCode__Delivery__EnableSsl=true
-Access__EmailCode__Delivery__Username=...
-Access__EmailCode__Delivery__Password=...
-Access__EmailCode__Delivery__FromAddress=taskcapture@example.co.jp
-```
+未登録、利用停止中、許可ドメイン外、指定した社内Asanaワークスペースに所属しないアカウントはログインできません。退職・異動時は管理画面で「このアプリを利用できる」を外すと、発行済みsessionとAsana OAuthを失効し、ローカルの暗号化tokenも消去します。
 
-ProductionでMockメール送信やDevelopment認証を指定すると起動を拒否します。SMTPパスワードは環境変数または安全なシークレット管理へ置き、Gitへ保存しません。
+PC・iPhone・iPadへ同時にログインできます。ログアウトするとその端末のsessionを終了し、ほかにログイン中の端末がなければAsana連携も解除します。管理者による利用停止は全端末を即時ログアウトさせます。
 
-初回だけ `Access__AdminEmails` に設定した管理者メールを起点にします。このメールでログインし、「接続・利用設定」→「利用者を事前登録」から社員の会社メールを追加します。事前登録されていないメールには確認コードを送らず、ログインできません。`AdminEmails` は初期管理者のサーバー側許可リストなので、運用開始後も必要最小限にします。
-
-退職・異動時は管理画面で「このアプリを利用できる」を外して保存します。その時点で発行済みログインをすべて失効し、Asana OAuthを解除してローカルの暗号化tokenも消去します。再び有効にした場合はAsanaへの再接続が必要です。
+メール確認コード方式は開発・切替用の `Access__Mode=EmailCode` として残していますが、Productionは `AsanaOAuth` 以外では起動しません。
 
 ## Gemini
 
@@ -135,23 +125,27 @@ dotnet user-secrets set "Integration:Asana:DefaultWorkspaceGid" "ワークスペ
 
 PATの権限で見えるプロジェクトだけが一覧に出ます。
 
-### 利用者が自分のAsanaを接続する本番推奨構成
+### Asanaログインを使う本番構成
 
-Asana Developer ConsoleでOAuthアプリを1件作成し、callback URLを `https://アプリURL/api/asana/connection/callback` にします。
+Asana Developer ConsoleでOAuthアプリを1件作成し、callback URLを `https://アプリURL/api/auth/asana/callback` にします。Asana側では対象の社内ワークスペースにアプリを公開します。
 
 ```text
 Integration__Asana__Mode=Api
 Integration__Asana__CredentialMode=PerUserOAuth
+Integration__Asana__DefaultWorkspaceGid=社内ワークスペース番号
 Integration__Asana__OAuth__ClientId=...
 Integration__Asana__OAuth__ClientSecret=...
-Integration__Asana__OAuth__RedirectUri=https://アプリURL/api/asana/connection/callback
+Integration__Asana__OAuth__RedirectUri=https://アプリURL/api/auth/asana/callback
 Integration__Asana__OAuth__RequireMatchingEmail=true
+Access__Mode=AsanaOAuth
+Access__AllowedEmailDomains__0=example.co.jp
+Access__AdminEmails__0=admin@example.co.jp
 DataProtection__KeysPath=C:\TaskCapture\DataProtectionKeys
 ```
 
-利用者は初回ログイン後、「接続・利用設定」からログイン中の会社メールと同じメールのAsanaを接続します。接続が完了するまでは通常登録、WBS、履歴を利用できません。異なるメール、emailを取得できないアカウント、`DefaultWorkspaceGid` の社内ワークスペースに所属しないアカウントは拒否し、tokenを保存しません。アクセストークンと更新トークンはASP.NET Core Data Protectionで暗号化してSQL Serverへ保存し、ブラウザーへ保持しません。各利用者には、そのAsanaアカウントで参照できるプロジェクトだけが表示されます。管理者はさらにアプリ側で登録先を限定できます。
+ログイン開始とcallbackはPKCE（S256）、改ざん防止state、HttpOnlyの短時間照合Cookieで保護します。アクセストークンと更新トークンはASP.NET Core Data Protectionで暗号化してSQL Serverへ保存し、ブラウザーへ保持しません。各利用者にはそのAsanaアカウントで参照できるプロジェクトだけが表示され、管理者はアプリ側でさらに登録先を限定できます。
 
-全社展開時の利用開始順は「管理者が会社メールを事前登録 → 利用者がメール確認コードでログイン → 同じメールのAsanaをOAuth接続 → 利用可能なプロジェクトから登録」です。社内Asana workspaceは `DefaultWorkspaceGid` で1つに固定します。
+OAuth scopeは `projects:read sections:read tasks:read tasks:write tasks:delete users:read workspaces:read` を設定します。
 
 ## Excel / CSV WBS取込
 
@@ -189,6 +183,8 @@ dotnet run --project src/TaskCapture.Launcher/TaskCapture.Launcher.csproj
 
 WebView2のログインCookieは利用者のWindowsプロファイル内に保持されます。
 
+音声はマイクからのリアルタイム入力に対応します。MP3やWAVなどの録音済み音声ファイル取込は対象外です。
+
 ## ビルド・テスト
 
 ```powershell
@@ -215,7 +211,7 @@ Windows配布ZIP:
 ## 運用確認
 
 - 稼働確認: `GET /api/health`
-- 起動準備確認: `GET /api/health/ready`（DB、SMTP、Asana、Azure OpenAI、暗号鍵。秘密値は返さない）
+- 起動準備確認: `GET /api/health/ready`（DB、Asanaログイン、Azure OpenAI、暗号鍵。秘密値は返さない）
 - 配備先確認: `& ./scripts/Test-TaskCaptureReadiness.ps1 -BaseUrl "https://アプリURL"`
 - 管理画面: 利用者の有効/停止、管理者、プロジェクト限定
 - 管理API: `GET /api/admin/audit`
@@ -228,7 +224,6 @@ Windows配布ZIP:
 | 項目 | 開発時 | 本番前に必要 |
 |---|---|---|
 | SQL Server | InMemory可 | 接続文字列、バックアップ先 |
-| メール送信 | Mock可 | SMTPホスト・送信元・資格情報 |
 | Asana | Mock/PAT可 | OAuthアプリのClient ID/Secret/Callback URL |
 | AI | RuleBased/Gemini可 | Azure OpenAI endpoint・deployment・APIキー |
 | HTTPS | localhost HTTP可 | TLS証明書と公開URL |
@@ -236,7 +231,7 @@ Windows配布ZIP:
 
 秘密情報はクライアント、ログ、リポジトリ、配布ZIPへ入れません。
 
-Productionでは、SQL Server、SSL SMTP、利用者別Asana OAuthと同一メール確認、Azure OpenAI、HTTPS callback、永続Data Protection鍵が揃っていない場合は安全のため起動を拒否します。
+Productionでは、SQL Server、Asanaログインと社内workspace、Azure OpenAI、HTTPS callback、永続Data Protection鍵が揃っていない場合は安全のため起動を拒否します。
 
 ## 文書
 

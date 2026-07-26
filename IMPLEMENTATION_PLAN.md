@@ -43,7 +43,7 @@
 - [x] 33. 通常タスク履歴の検索・状態絞り込みを実装
 - [x] 34. Windows自動起動・単一起動、配布ZIP、SQLバックアップ、ready health、GitHub Actions CIを実装
 - [x] 35. 認証・プロジェクト制限を含む自動テストとDESKTOP-RQ3T767実SQL統合を完了
-- [ ] 36. 本番SMTP、Asana OAuthアプリ、HTTPS URL、永続Data Protection鍵を配備先で設定
+- [ ] 36. 本番Asana OAuthアプリ、HTTPS URL、永続Data Protection鍵を配備先で設定
 - [ ] 37. iPhone/iPad実機と配備済みHTTPS URLで最終受入テスト
 
 ## Phase 4: 本番安全性とAzure OpenAI
@@ -57,6 +57,12 @@
 - [x] 41. 管理者が会社メールを事前登録し、未登録メールへの確認コード送信とログインを拒否する
 - [x] 42. 同一メールのAsana OAuth接続が完了するまで通常登録・WBS・履歴APIを拒否し、接続画面へ案内する
 - [x] 43. 利用停止時に全sessionを失効し、Asana OAuth providerへの解除要求とローカルtoken消去を行う
+
+## Phase 6: Asanaログイン一本化
+
+- [x] 44. 事前登録済み会社メールのAsana OAuthで1回にログインとAPI連携を完了する
+- [x] 45. PKCE S256、改ざん防止state、短時間照合Cookie、workspace所属、事前登録、利用停止を検証する
+- [x] 46. 1ボタンログインUI、複数端末を考慮したログアウトとAsana連携解除、本番設定検証、自動テストを更新する
 
 ## 品質ゲート
 
@@ -74,12 +80,12 @@
 12. WBSは親キー・階層レベル・階層列をfixtureで確認し、実SQLでprofile/batch/row永続化、実Asanaで親子登録、再送時の重複防止を確認する。
 13. project/section一覧取得、開始日保存、`start_on`送信、開始日と期限の順序違反をAPIテストで確認する。
 14. WBSの通常画面に専門語が露出せず、詳細設定が既定で閉じ、PCと390px幅で30件の確認・戻る操作に横スクロールがないことを確認する。
-15. 未認証APIが401、会社外メールが400、session logout後が401、停止利用者が403になることを確認する。
+15. 未認証APIが401、許可ドメイン外・未登録・workspace外のAsanaログインが拒否され、session logout後が401になることを確認する。
 16. プロジェクト制限を一覧・section/field・実登録のサーバー側で強制し、直接GID指定で回避できないことを確認する。
 17. Asana OAuth tokenが平文でDB・ログ・クライアントへ残らず、Data Protection鍵を永続化できることを確認する。
 18. CI、配布スクリプト、検証付きSQLバックアップを実行可能な状態に保つ。
-19. Asana OAuthはログイン会社メールとprofile emailが一致しない場合にtokenを保存・使用しないことを確認する。
-20. ProductionはSQL Server、SSL SMTP、利用者別Asana OAuth、Azure OpenAI、HTTPS callback、永続Data Protection鍵の不足を安全に拒否する。
-21. 未登録会社メールはcode送信前に拒否し、管理者が事前登録したメールだけがsessionを作成できることを確認する。
-22. PerUserOAuth構成ではAsana未接続の利用者が業務APIを使えず、同一メールの接続後だけ利用できることを確認する。
+19. Asana OAuthログインがPKCE、state、照合Cookieのすべてを検証し、不正なcallbackでtokenを取得しないことを確認する。
+20. ProductionはSQL Server、AsanaOAuthログイン、workspace・scope、Azure OpenAI、HTTPS callback、永続Data Protection鍵の不足を安全に拒否する。
+21. 管理者が事前登録した会社メールのAsanaアカウントだけがsessionと暗号化tokenを同時に作成できることを確認する。
+22. Asana OAuthログイン直後だけ業務APIを利用でき、現在端末のログアウトでsessionが失効し、最後の有効sessionのログアウトでAsana連携も失効することを確認する。
 23. 利用停止で全session、provider OAuth、ローカルtokenが失効し、再開後も再接続が必要なことを確認する。

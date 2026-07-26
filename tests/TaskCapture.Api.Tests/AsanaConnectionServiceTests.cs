@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -54,7 +55,7 @@ public sealed class AsanaConnectionServiceTests
             "different-workspace");
 
         var state = GetState(fixture.Service.BuildAuthorizationUri());
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<AsanaWorkspaceDeniedException>(() =>
             fixture.Service.ConnectAsync("authorization-code", state, "correlation", CancellationToken.None));
 
         Assert.Contains("社内Asanaワークスペース", error.Message);
@@ -100,6 +101,93 @@ public sealed class AsanaConnectionServiceTests
         Assert.False((await fixture.Service.GetStatusAsync(CancellationToken.None)).Connected);
     }
 
+    [Fact]
+    public async Task LoginAsync_UsesPkceAndCreatesSessionForPreRegisteredUser()
+    {
+        await using var fixture = CreateFixture("employee@example.co.jp", "Employee@Example.co.jp");
+        var start = fixture.Service.BuildLoginAuthorizationUri();
+        var authorization = ParseQuery(start.AuthorizationUrl);
+
+        var result = await fixture.Service.LoginAsync(
+            "authorization-code",
+            authorization["state"],
+            start.Correlation,
+            "test-browser",
+            "login-correlation",
+            CancellationToken.None);
+
+        Assert.Equal("employee@example.co.jp", result.Email);
+        Assert.Single(await fixture.Db.UserSessions.ToListAsync());
+        Assert.Single(await fixture.Db.AsanaConnections.ToListAsync());
+        Assert.Equal("S256", authorization["code_challenge_method"]);
+        Assert.True(fixture.Handler.LastTokenForm.TryGetValue("code_verifier", out var verifier));
+        Assert.Equal(CreateCodeChallenge(verifier!), authorization["code_challenge"]);
+        Assert.Equal(
+            "Asana OAuthでログインしました。",
+            (await fixture.Db.AuditLogs.SingleAsync(item => item.EventType == "LoginSucceeded")).Detail);
+    }
+
+    [Fact]
+    public async Task LoginAsync_RejectsUserWhoWasNotPreRegisteredAndRevokesToken()
+    {
+        await using var fixture = CreateFixture("employee@example.co.jp", "employee@example.co.jp");
+        fixture.Db.Users.Remove(fixture.User);
+        await fixture.Db.SaveChangesAsync();
+        var start = fixture.Service.BuildLoginAuthorizationUri();
+
+        var error = await Assert.ThrowsAsync<AsanaLoginException>(() =>
+            fixture.Service.LoginAsync(
+                "authorization-code",
+                ParseQuery(start.AuthorizationUrl)["state"],
+                start.Correlation,
+                "test-browser",
+                "login-correlation",
+                CancellationToken.None));
+
+        Assert.Equal("not-registered", error.Reason);
+        Assert.Empty(await fixture.Db.UserSessions.ToListAsync());
+        Assert.Empty(await fixture.Db.AsanaConnections.ToListAsync());
+        Assert.True(fixture.Handler.RevokeRequested);
+        Assert.DoesNotContain(
+            "employee@example.co.jp",
+            (await fixture.Db.AuditLogs.SingleAsync()).Detail ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LoginAsync_RejectsWrongWorkspaceAndInvalidCorrelation()
+    {
+        await using var wrongWorkspace = CreateFixture(
+            "employee@example.co.jp",
+            "employee@example.co.jp",
+            "different-workspace");
+        var workspaceStart = wrongWorkspace.Service.BuildLoginAuthorizationUri();
+        await Assert.ThrowsAsync<AsanaWorkspaceDeniedException>(() =>
+            wrongWorkspace.Service.LoginAsync(
+                "authorization-code",
+                ParseQuery(workspaceStart.AuthorizationUrl)["state"],
+                workspaceStart.Correlation,
+                "test-browser",
+                "login-correlation",
+                CancellationToken.None));
+        Assert.True(wrongWorkspace.Handler.RevokeRequested);
+
+        await using var badCorrelation = CreateFixture(
+            "employee@example.co.jp",
+            "employee@example.co.jp");
+        var correlationStart = badCorrelation.Service.BuildLoginAuthorizationUri();
+        var error = await Assert.ThrowsAsync<AsanaLoginException>(() =>
+            badCorrelation.Service.LoginAsync(
+                "authorization-code",
+                ParseQuery(correlationStart.AuthorizationUrl)["state"],
+                "wrong-correlation",
+                "test-browser",
+                "login-correlation",
+                CancellationToken.None));
+        Assert.Equal("expired", error.Reason);
+        Assert.Equal(0, badCorrelation.Handler.TokenRequestCount);
+    }
+
     private static Fixture CreateFixture(
         string companyEmail,
         string asanaEmail,
@@ -139,6 +227,11 @@ public sealed class AsanaConnectionServiceTests
             db,
             currentUser,
             asanaOptions,
+            Microsoft.Extensions.Options.Options.Create(new AccessOptions
+            {
+                Mode = "AsanaOAuth",
+                AllowedEmailDomains = ["example.co.jp"]
+            }),
             new EphemeralDataProtectionProvider(),
             new TestHttpClientFactory(handler),
             TimeProvider.System);
@@ -153,6 +246,20 @@ public sealed class AsanaConnectionServiceTests
             .Single(pair => Uri.UnescapeDataString(pair[0]) == "state");
         return Uri.UnescapeDataString(item[1]);
     }
+
+    private static Dictionary<string, string> ParseQuery(string uri) =>
+        new Uri(uri).Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .ToDictionary(
+                pair => Uri.UnescapeDataString(pair[0]),
+                pair => Uri.UnescapeDataString(pair[1]));
+
+    private static string CreateCodeChallenge(string verifier) =>
+        Convert.ToBase64String(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
 
     private sealed class TestCurrentUser(string email) : ICurrentUserContext
     {
@@ -174,6 +281,8 @@ public sealed class AsanaConnectionServiceTests
     {
         public bool RevokeRequested { get; private set; }
         public string? RevokedToken { get; private set; }
+        public int TokenRequestCount { get; private set; }
+        public Dictionary<string, string> LastTokenForm { get; private set; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -190,6 +299,18 @@ public sealed class AsanaConnectionServiceTests
                     .Select(pair => Uri.UnescapeDataString(pair[1].Replace('+', ' ')))
                     .SingleOrDefault();
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            }
+
+            if (request.Method == HttpMethod.Post)
+            {
+                TokenRequestCount++;
+                var form = request.Content!.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                LastTokenForm = form.Split('&', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(part => part.Split('=', 2))
+                    .Where(pair => pair.Length == 2)
+                    .ToDictionary(
+                        pair => Uri.UnescapeDataString(pair[0]),
+                        pair => Uri.UnescapeDataString(pair[1].Replace('+', ' ')));
             }
 
             var json = request.Method == HttpMethod.Post

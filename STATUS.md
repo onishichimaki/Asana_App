@@ -4,18 +4,19 @@
 
 ## 現在地
 
-- フェーズ: 事前登録制の個別アカウント・本番安全性・Azure OpenAIを含むMVP実装完了、本番外部設定と実端末受入待ち
-- MVP 判定: 通常入力、Azure OpenAI/Gemini/RuleBased、可変WBS、管理者事前登録制の会社メール個別アカウント、同一メール・社内workspace必須の利用者別Asana OAuth、権限管理、即時利用停止、SQL Server、Windowsランチャー、配布・バックアップ・CIのコードと主要自動テストが完成。
+- フェーズ: 事前登録制のAsanaログイン・本番安全性・Azure OpenAIを含むMVP実装完了、本番外部設定と実端末受入待ち
+- MVP 判定: 通常入力、Azure OpenAI/Gemini/RuleBased、可変WBS、管理者事前登録制のAsanaログイン、社内workspace必須の利用者別Asana OAuth、権限管理、即時利用停止、SQL Server、Windowsランチャー、配布・バックアップ・CIのコードと主要自動テストが完成。
 
 ## 完了
 
 - メイリオUI優先で説明・余白を抑えたReactレスポンシブ1画面（入力 → 整理 → 確認・修正 → 登録）
-- 会社メール確認コード、PBKDF2ハッシュ、HttpOnly Cookie session、ログアウト、送信・試行回数制限
-- 管理画面からの会社メール事前登録と、未登録・停止中メールへの確認コード送信拒否
+- 事前登録済み会社メールの1ボタンAsanaログイン、HttpOnly Cookie session、複数端末を考慮したログアウト
+- PKCE S256、Data Protection保護state、短時間照合Cookie、会社ドメイン・事前登録・利用中・workspace所属の検証
+- 開発・切替用の会社メール確認コード方式も維持
+- 管理画面からの会社メール事前登録と、未登録・停止中利用者のログイン拒否
 - 認証必須API、利用者ごとの通常/WBS履歴分離、停止利用者の拒否、管理者policy
-- 利用者別Asana OAuth、Data Protection token暗号化、refresh、接続状態・解除UI
-- 会社メールとAsana profile emailの厳格一致、不一致時のtoken非保存・監査・分かりやすい再接続表示
-- 指定した社内Asana workspaceへの所属確認と、Asana接続完了までの通常登録・WBS・履歴ロック
+- 利用者別Asana OAuth、Data Protection token暗号化、refresh、ログインとAPI連携の同時完了
+- 指定した社内Asana workspaceへの所属確認と、利用者のAsana権限に基づくproject表示
 - 利用停止時の全session失効、Asana OAuth provider解除要求、ローカル暗号化token消去
 - 利用者管理画面（利用停止、管理者、登録先project限定）と監査閲覧API
 - Asanaプロジェクトの名前検索・お気に入り、通常登録・WBS共通のサーバー側project認可
@@ -59,7 +60,7 @@
 - Production必須設定の安全側起動チェック、秘密値を返さないready診断、配布設定例、定期backupタスク登録、実端末受入チェックリスト
 - README、AGENTS、REQUIREMENTS、ARCHITECTURE、IMPLEMENTATION_PLAN、STATUS、DECISIONS
 - `docs/architecture.html`、`docs/architecture.json`、`docs/architecture_readme.md`
-- GitHub `onishichimaki/Asana_App` の `main` へ PR #1〜#10をマージし、本番認証・Azure OpenAI・運用仕上げをPR #11で公開
+- GitHub `onishichimaki/Asana_App` の `main` を正本とし、機能単位のPull Requestで継続公開
 - Asana PATをローカルUser Secretsへ保存し、既定workspace/project GIDを設定
 - 「仕事リクエスト」projectへ実API登録し、SQL履歴と二重登録防止を確認
 
@@ -69,7 +70,7 @@
 - Launcher project build: 成功、警告0、エラー0
 - React lint: 成功
 - React production build: 成功
-- xUnit: 60件成功、失敗0
+- xUnit: 66件成功、失敗0
 - 実 HTTP smoke: health、HTML、bundle、organize、Mock register が成功
 - SQL Server `DESKTOP-RQ3T767/TaskCapture`: 9 migration と必須16テーブル、`AsanaUserEmail`列を確認
 - 実SQL結合: 通常候補とWBS行の開始日・期限、親子整理、通常Mock親子登録、WBSテンプレート・親子行・Mock登録、API再起動後の履歴再取得を確認（`1|1|1|1|1|2|4|1|1|1|2`）
@@ -125,7 +126,8 @@
 - 全社利用認証テスト: 未登録メール拒否、管理者事前登録、Asana接続前の業務API 403、同一メール・指定workspace接続後の許可を確認
 - 利用停止テスト: 全session失効、provider OAuth解除要求、ローカルtoken消去と再接続必須を確認
 - Azure OpenAIテスト: v1 endpoint、api-key header、deployment、strict JSON Schema要求と共通候補変換を確認
-- Production設定診断テスト: SQL Server、SSL SMTP、利用者別Asana OAuth + 同一メール、Azure OpenAI、永続Data Protection鍵の不足を列挙し、秘密値を返さないことを確認
+- Asanaログインテスト: 事前登録済み利用者のログイン・業務API・ログアウト、複数端末sessionの接続維持、PKCE整合、照合Cookie欠損、未登録、workspace外、token解除を確認
+- Production設定診断テスト: SQL Server、AsanaOAuthログイン、workspace・scope、Azure OpenAI、永続Data Protection鍵の不足を列挙し、秘密値を返さないことを確認
 - 運用スクリプト: readiness確認・定期backup登録を含む全PowerShell構文解析に成功
 - 実起動診断: Development + SQL Server / Gemini / Asana APIで `/api/health/ready` が `TASK_CAPTURE_READY=true`を返すことを確認
 - Asana callback UI QA: 認証失敗時に同一メールの案内を表示し、`launcher=1`を保ったまま認証パラメータのみ消去、consoleエラー0を確認
@@ -136,11 +138,11 @@
 
 - Windows tray/hotkey、iPhone/iPad カメラOCR・音声・clipboard は実端末で最終確認が必要。
 - 画像OCRは初回にTesseract.js日本語言語モデルを取得するため、初回のみインターネット接続が必要。
-- 本番SMTP、Asana OAuthアプリのClient ID/Secret/Callback URL、Azure OpenAI resource/deployment/key、HTTPS公開URL、永続Data Protection鍵は配備先未設定。
+- Asana OAuthアプリのClient ID/Secret/Callback URL・公開workspace、Azure OpenAI resource/deployment/key、HTTPS公開URL、永続Data Protection鍵は配備先未設定。
 - 本番の定期バックアップ実行主体・監視通知先は運用環境決定後に設定が必要。
 
 ## 次に必要な作業
 
-1. 本番SMTP、Asana OAuthアプリ、Azure OpenAI、HTTPS、Secret Store、Data Protection鍵フォルダーを設定する。
+1. 本番Asana OAuthアプリ、Azure OpenAI、HTTPS、Secret Store、Data Protection鍵フォルダーを設定する。
 2. HTTPS の iPhone/iPad と配布版Windows launcherで、ログイン・画像・音声・WBS・Asana実登録の受入テストを実施する。
 3. SQL backupスクリプトをタスクスケジューラ等へ登録し、監視通知先を決める。

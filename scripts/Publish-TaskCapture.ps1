@@ -44,7 +44,7 @@ Task Capture 配布物
 4. タスクトレイの「Windowsログイン時に起動」で自動起動を設定できます。
 5. scripts/Test-TaskCaptureReadiness.ps1相当の確認で /api/health/ready がreadyになることを確認します。
 
-appsettings.Production.example.jsonは項目確認用です。APIキー、OAuth Secret、SMTP Password、SQL接続文字列は環境変数またはSecret Storeに設定し、配布ZIPへ入れないでください。詳細はリポジトリの README.md を参照してください。
+appsettings.Production.example.jsonは項目確認用です。APIキー、OAuth Secret、SQL接続文字列は環境変数またはSecret Storeに設定し、配布ZIPへ入れないでください。詳細はリポジトリの README.md を参照してください。
 '@
 Set-Content -LiteralPath (Join-Path $outputRoot 'はじめに.txt') -Value $exampleConfig -Encoding utf8
 

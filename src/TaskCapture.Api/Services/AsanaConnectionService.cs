@@ -1,10 +1,13 @@
 using System.Net.Http.Headers;
+using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaskCapture.Api.Data;
+using TaskCapture.Api.Contracts;
 using TaskCapture.Api.Options;
 using TaskCapture.Api.Security;
 
@@ -27,6 +30,24 @@ public sealed class AsanaEmailMismatchException : InvalidOperationException
     }
 }
 
+public sealed class AsanaWorkspaceDeniedException : InvalidOperationException
+{
+    public AsanaWorkspaceDeniedException()
+        : base("指定された社内Asanaワークスペースを利用できるアカウントでログインしてください。")
+    {
+    }
+}
+
+public sealed class AsanaLoginException(string reason, string message) : InvalidOperationException(message)
+{
+    public string Reason { get; } = reason;
+}
+
+public sealed record AsanaLoginStart(
+    string AuthorizationUrl,
+    string Correlation,
+    DateTimeOffset ExpiresAtUtc);
+
 public interface IAsanaAccessTokenProvider
 {
     Task<string> GetAccessTokenAsync(CancellationToken cancellationToken);
@@ -36,15 +57,19 @@ public sealed class AsanaConnectionService(
     TaskCaptureDbContext db,
     ICurrentUserContext currentUser,
     IOptions<AsanaOptions> options,
+    IOptions<AccessOptions> access,
     IDataProtectionProvider dataProtection,
     IHttpClientFactory httpClientFactory,
     TimeProvider timeProvider) : IAsanaAccessTokenProvider
 {
     private readonly AsanaOptions _options = options.Value;
+    private readonly AccessOptions _access = access.Value;
     private readonly IDataProtector _tokenProtector =
         dataProtection.CreateProtector("TaskCapture.AsanaOAuth.Tokens.v1");
     private readonly IDataProtector _stateProtector =
         dataProtection.CreateProtector("TaskCapture.AsanaOAuth.State.v1");
+    private readonly IDataProtector _loginStateProtector =
+        dataProtection.CreateProtector("TaskCapture.AsanaOAuth.LoginState.v1");
 
     public async Task<AsanaConnectionStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
@@ -82,23 +107,176 @@ public sealed class AsanaConnectionService(
     public string BuildAuthorizationUri()
     {
         EnsureOAuthConfigured();
+        var codeVerifier = CreateRandomToken();
         var state = new OAuthState(
             currentUser.ClientKey,
-            Guid.NewGuid().ToString("N"),
+            codeVerifier,
             timeProvider.GetUtcNow().AddMinutes(10));
         var protectedState = _stateProtector.Protect(JsonSerializer.Serialize(state));
-        var query = new Dictionary<string, string?>
+        return BuildAuthorizationUri(
+            protectedState,
+            codeVerifier,
+            GetConnectionRedirectUri());
+    }
+
+    public AsanaLoginStart BuildLoginAuthorizationUri()
+    {
+        EnsureOAuthConfigured();
+        var correlation = CreateRandomToken();
+        var codeVerifier = CreateRandomToken();
+        var expiresAtUtc = timeProvider.GetUtcNow().AddMinutes(
+            Math.Clamp(_access.AsanaLogin.CorrelationLifetimeMinutes, 5, 30));
+        var state = new AsanaLoginState(
+            Hash(correlation),
+            codeVerifier,
+            expiresAtUtc);
+        var protectedState = _loginStateProtector.Protect(JsonSerializer.Serialize(state));
+        return new AsanaLoginStart(
+            BuildAuthorizationUri(protectedState, codeVerifier, _options.OAuth.RedirectUri!),
+            correlation,
+            expiresAtUtc);
+    }
+
+    public async Task<AuthenticatedUserResponse> LoginAsync(
+        string code,
+        string state,
+        string correlation,
+        string userAgent,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        EnsureOAuthConfigured();
+        AsanaLoginState parsedState;
+        try
         {
-            ["client_id"] = _options.OAuth.ClientId,
-            ["redirect_uri"] = _options.OAuth.RedirectUri,
-            ["response_type"] = "code",
-            ["state"] = protectedState,
-            ["scope"] = string.Join(' ', _options.OAuth.Scopes.Where(value => !string.IsNullOrWhiteSpace(value)))
-        };
-        return "https://app.asana.com/-/oauth_authorize?" + string.Join(
-            '&',
-            query.Select(item =>
-                $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value ?? string.Empty)}"));
+            parsedState = JsonSerializer.Deserialize<AsanaLoginState>(
+                _loginStateProtector.Unprotect(state)) ?? throw new InvalidOperationException();
+        }
+        catch
+        {
+            throw new AsanaLoginException(
+                "expired",
+                "Asanaログインの確認情報が正しくありません。最初からやり直してください。");
+        }
+
+        if (parsedState.ExpiresAtUtc < timeProvider.GetUtcNow()
+            || !FixedTimeEquals(parsedState.CorrelationHash, Hash(correlation)))
+        {
+            throw new AsanaLoginException(
+                "expired",
+                "Asanaログインの有効時間が切れました。最初からやり直してください。");
+        }
+
+        var token = await ExchangeTokenAsync(
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code",
+                ["client_id"] = _options.OAuth.ClientId!,
+                ["client_secret"] = _options.OAuth.ClientSecret!,
+                ["redirect_uri"] = _options.OAuth.RedirectUri!,
+                ["code"] = code,
+                ["code_verifier"] = parsedState.CodeVerifier
+            },
+            cancellationToken);
+
+        try
+        {
+            var profile = await GetProfileAsync(token.AccessToken, cancellationToken);
+            var normalizedEmail = NormalizeAndValidateCompanyEmail(profile.UserEmail);
+            var clientKey = UserIdentityKey.Create("Email", normalizedEmail);
+            var user = await db.Users.SingleOrDefaultAsync(
+                item => item.ClientKey == clientKey,
+                cancellationToken);
+            var isBootstrapAdmin = _access.AdminEmails.Contains(
+                normalizedEmail,
+                StringComparer.OrdinalIgnoreCase);
+            if (user is null && !isBootstrapAdmin)
+            {
+                AddRejectedLoginAudit(profile.UserGid, "The Asana account was not pre-registered.", correlationId);
+                await db.SaveChangesAsync(cancellationToken);
+                throw new AsanaLoginException(
+                    "not-registered",
+                    "このAsanaメールはアプリに利用登録されていません。管理者に連絡してください。");
+            }
+            if (user is not null && !user.IsActive)
+            {
+                AddRejectedLoginAudit(profile.UserGid, "The pre-registered account is inactive.", correlationId, user.Id);
+                await db.SaveChangesAsync(cancellationToken);
+                throw new AsanaLoginException(
+                    "inactive",
+                    "この利用者はアプリの使用を停止されています。");
+            }
+
+            var now = timeProvider.GetUtcNow();
+            if (user is null)
+            {
+                user = new User
+                {
+                    ClientKey = clientKey,
+                    IdentityProvider = "Email",
+                    SubjectId = normalizedEmail,
+                    Email = normalizedEmail,
+                    DisplayName = profile.UserName,
+                    IsAdmin = true,
+                    IsActive = true,
+                    CreatedAtUtc = now
+                };
+                db.Users.Add(user);
+            }
+            else
+            {
+                user.IdentityProvider = "Email";
+                user.SubjectId = normalizedEmail;
+                user.Email = normalizedEmail;
+                user.IsAdmin = user.IsAdmin || isBootstrapAdmin;
+            }
+            user.LastLoginAtUtc = now;
+
+            var connection = await db.AsanaConnections.SingleOrDefaultAsync(
+                item => item.UserId == user.Id,
+                cancellationToken);
+            if (connection is null)
+            {
+                connection = new AsanaConnection { User = user };
+                db.AsanaConnections.Add(connection);
+            }
+            ApplyConnection(connection, profile, token);
+
+            var session = new UserSession
+            {
+                User = user,
+                UserAgentHash = Hash(userAgent ?? string.Empty),
+                ExpiresAtUtc = now.AddDays(Math.Clamp(_access.AsanaLogin.SessionDays, 1, 30)),
+                CreatedAtUtc = now,
+                LastSeenAtUtc = now
+            };
+            db.UserSessions.Add(session);
+            db.AuditLogs.Add(new AuditLog
+            {
+                User = user,
+                EventType = "LoginSucceeded",
+                EntityType = nameof(UserSession),
+                EntityId = session.Id.ToString(),
+                Detail = "Asana OAuthでログインしました。",
+                CorrelationId = correlationId,
+                CreatedAtUtc = now
+            });
+            await db.SaveChangesAsync(cancellationToken);
+            return new AuthenticatedUserResponse(
+                user.Id,
+                session.Id,
+                normalizedEmail,
+                user.DisplayName,
+                user.IsAdmin,
+                session.ExpiresAtUtc);
+        }
+        catch
+        {
+            await TryRevokeTokenAtProviderAsync(
+                token.RefreshToken ?? token.AccessToken,
+                cancellationToken);
+            throw;
+        }
     }
 
     public async Task ConnectAsync(
@@ -131,8 +309,9 @@ public sealed class AsanaConnectionService(
                 ["grant_type"] = "authorization_code",
                 ["client_id"] = _options.OAuth.ClientId!,
                 ["client_secret"] = _options.OAuth.ClientSecret!,
-                ["redirect_uri"] = _options.OAuth.RedirectUri!,
-                ["code"] = code
+                ["redirect_uri"] = GetConnectionRedirectUri(),
+                ["code"] = code,
+                ["code_verifier"] = parsedState.CodeVerifier
             },
             cancellationToken);
         var profile = await GetProfileAsync(token.AccessToken, cancellationToken);
@@ -162,22 +341,7 @@ public sealed class AsanaConnectionService(
             db.AsanaConnections.Add(connection);
         }
 
-        connection.AsanaUserGid = profile.UserGid;
-        connection.AsanaUserName = profile.UserName;
-        connection.AsanaUserEmail = NormalizeEmail(profile.UserEmail);
-        connection.WorkspaceGid = profile.WorkspaceGid;
-        connection.WorkspaceName = profile.WorkspaceName;
-        connection.ProtectedAccessToken = _tokenProtector.Protect(token.AccessToken);
-        connection.ProtectedRefreshToken = string.IsNullOrWhiteSpace(token.RefreshToken)
-            ? connection.ProtectedRefreshToken
-            : _tokenProtector.Protect(token.RefreshToken);
-        connection.GrantedScopes = string.Join(' ', _options.OAuth.Scopes);
-        connection.TokenExpiresAtUtc = token.ExpiresInSeconds is > 0
-            ? timeProvider.GetUtcNow().AddSeconds(token.ExpiresInSeconds.Value)
-            : null;
-        connection.ConnectedAtUtc = timeProvider.GetUtcNow();
-        connection.UpdatedAtUtc = timeProvider.GetUtcNow();
-        connection.RevokedAtUtc = null;
+        ApplyConnection(connection, profile, token);
         db.AuditLogs.Add(new AuditLog
         {
             UserId = user.Id,
@@ -353,6 +517,26 @@ public sealed class AsanaConnectionService(
 
         try
         {
+            return await TryRevokeTokenAtProviderAsync(
+                UnprotectToken(connection.ProtectedRefreshToken),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> TryRevokeTokenAtProviderAsync(
+        string token,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             EnsureOAuthConfigured();
             var client = httpClientFactory.CreateClient("AsanaOAuth");
             using var response = await client.PostAsync(
@@ -361,7 +545,7 @@ public sealed class AsanaConnectionService(
                 {
                     ["client_id"] = _options.OAuth.ClientId!,
                     ["client_secret"] = _options.OAuth.ClientSecret!,
-                    ["token"] = UnprotectToken(connection.ProtectedRefreshToken)
+                    ["token"] = token
                 }),
                 cancellationToken);
             return response.IsSuccessStatusCode;
@@ -408,8 +592,7 @@ public sealed class AsanaConnectionService(
         if (!string.IsNullOrWhiteSpace(_options.DefaultWorkspaceGid)
             && workspace.ValueKind != JsonValueKind.Object)
         {
-            throw new InvalidOperationException(
-                "指定された社内Asanaワークスペースを利用できるアカウントで接続してください。");
+            throw new AsanaWorkspaceDeniedException();
         }
         return new AsanaProfile(
             data.GetProperty("gid").GetString() ?? string.Empty,
@@ -445,6 +628,113 @@ public sealed class AsanaConnectionService(
     private static string? NormalizeEmail(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 
+    private string NormalizeAndValidateCompanyEmail(string? value)
+    {
+        var normalized = NormalizeEmail(value);
+        if (normalized is null || !new EmailAddressAttribute().IsValid(normalized))
+        {
+            throw new AsanaLoginException(
+                "company-email",
+                "Asanaアカウントの会社メールを確認できませんでした。");
+        }
+
+        var domain = normalized[(normalized.LastIndexOf('@') + 1)..];
+        var allowedDomains = _access.AllowedEmailDomains
+            .Select(item => item.Trim().TrimStart('@').ToLowerInvariant())
+            .Where(item => item.Length > 0);
+        if (!allowedDomains.Contains(domain, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new AsanaLoginException(
+                "company-email",
+                "許可された会社メールのAsanaアカウントでログインしてください。");
+        }
+        return normalized;
+    }
+
+    private void ApplyConnection(
+        AsanaConnection connection,
+        AsanaProfile profile,
+        OAuthToken token)
+    {
+        var now = timeProvider.GetUtcNow();
+        connection.AsanaUserGid = profile.UserGid;
+        connection.AsanaUserName = profile.UserName;
+        connection.AsanaUserEmail = NormalizeEmail(profile.UserEmail);
+        connection.WorkspaceGid = profile.WorkspaceGid;
+        connection.WorkspaceName = profile.WorkspaceName;
+        connection.ProtectedAccessToken = _tokenProtector.Protect(token.AccessToken);
+        connection.ProtectedRefreshToken = string.IsNullOrWhiteSpace(token.RefreshToken)
+            ? connection.ProtectedRefreshToken
+            : _tokenProtector.Protect(token.RefreshToken);
+        connection.GrantedScopes = string.Join(' ', _options.OAuth.Scopes);
+        connection.TokenExpiresAtUtc = token.ExpiresInSeconds is > 0
+            ? now.AddSeconds(token.ExpiresInSeconds.Value)
+            : null;
+        connection.ConnectedAtUtc = now;
+        connection.UpdatedAtUtc = now;
+        connection.RevokedAtUtc = null;
+    }
+
+    private void AddRejectedLoginAudit(
+        string asanaUserGid,
+        string detail,
+        string correlationId,
+        Guid? userId = null) =>
+        db.AuditLogs.Add(new AuditLog
+        {
+            UserId = userId,
+            EventType = "AsanaLoginRejected",
+            EntityType = nameof(User),
+            EntityId = asanaUserGid,
+            Level = "Warning",
+            Detail = detail,
+            CorrelationId = correlationId,
+            CreatedAtUtc = timeProvider.GetUtcNow()
+        });
+
+    private string BuildAuthorizationUri(
+        string protectedState,
+        string codeVerifier,
+        string redirectUri)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["client_id"] = _options.OAuth.ClientId,
+            ["redirect_uri"] = redirectUri,
+            ["response_type"] = "code",
+            ["state"] = protectedState,
+            ["scope"] = string.Join(' ', _options.OAuth.Scopes.Where(value => !string.IsNullOrWhiteSpace(value))),
+            ["code_challenge"] = Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(codeVerifier))),
+            ["code_challenge_method"] = "S256"
+        };
+        return "https://app.asana.com/-/oauth_authorize?" + string.Join(
+            '&',
+            query.Select(item =>
+                $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value ?? string.Empty)}"));
+    }
+
+    private string GetConnectionRedirectUri() =>
+        string.IsNullOrWhiteSpace(_options.OAuth.ConnectionRedirectUri)
+            ? _options.OAuth.RedirectUri!
+            : _options.OAuth.ConnectionRedirectUri;
+
+    private static string CreateRandomToken() =>
+        Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+
+    private static string Hash(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static bool FixedTimeEquals(string left, string right) =>
+        CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(left),
+            Encoding.UTF8.GetBytes(right));
+
+    private static string Base64UrlEncode(byte[] bytes) =>
+        Convert.ToBase64String(bytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
     private void EnsureOAuthConfigured()
     {
         if (string.IsNullOrWhiteSpace(_options.OAuth.ClientId)
@@ -469,7 +759,11 @@ public sealed class AsanaConnectionService(
         }
     }
 
-    private sealed record OAuthState(string ClientKey, string Nonce, DateTimeOffset ExpiresAtUtc);
+    private sealed record OAuthState(string ClientKey, string CodeVerifier, DateTimeOffset ExpiresAtUtc);
+    private sealed record AsanaLoginState(
+        string CorrelationHash,
+        string CodeVerifier,
+        DateTimeOffset ExpiresAtUtc);
     private sealed record OAuthToken(string AccessToken, string? RefreshToken, int? ExpiresInSeconds);
     private sealed record AsanaProfile(
         string UserGid,

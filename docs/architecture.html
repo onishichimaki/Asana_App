@@ -11,9 +11,9 @@
 <body>
   <header class="hero">
     <div class="wrap">
-      <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-25</p>
+      <p class="kicker">SYSTEM ARCHITECTURE · 2026-07-26</p>
       <h1>Task Capture for Asana</h1>
-      <p>管理者が事前登録した会社メールで個別ログインし、同じメールのAsanaを接続してから利用。テキスト・議事録・画像OCR・音声、または可変レイアウトWBSをRuleBased・Gemini・Azure OpenAIで整理してAsanaへ渡す登録専用アプリです。</p>
+      <p>管理者が事前登録した会社メールのAsanaアカウントで1回ログインし、本人のAsana権限で利用。テキスト・議事録・画像OCR・マイク音声、または可変レイアウトWBSをRuleBased・Gemini・Azure OpenAIで整理してAsanaへ渡す登録専用アプリです。</p>
       <div class="facts">
         <div class="fact"><strong>4 clear modes</strong><span>すぐ登録 / WBS / 履歴 / 設定</span></div>
         <div class="fact"><strong>16 tables</strong><span>認証・Asana接続・通常入力・WBS・監査</span></div>
@@ -38,7 +38,7 @@
           <div class="arrow">↓ HTTPS / JSON ↓</div>
           <div class="lane"><p class="lane-label">SERVER APPLICATION</p><div class="nodes">
             <button class="node" data-node="api"><span class="type">ASP.NET Core</span><strong>API Host</strong><small>validation · Problem Details</small></button>
-            <button class="node" data-node="auth"><span class="type">Security</span><strong>Email Auth & Authorization</strong><small>code · cookie · owner · admin</small></button>
+            <button class="node" data-node="auth"><span class="type">Security</span><strong>Asana Login & Authorization</strong><small>PKCE · cookie · owner · admin</small></button>
             <button class="node" data-node="workflow"><span class="type">Application</span><strong>Task Workflow</strong><small>parent-first · resume · audit</small></button>
             <button class="node" data-node="wbsflow"><span class="type">Application</span><strong>WBS Import Workflow</strong><small>登録前確認 · 差分 · 更新 · 取り消し</small></button>
             <button class="node" data-node="organizer"><span class="type">Domain service</span><strong>Task Organizer</strong><small>parent · subtasks · owner · due</small></button>
@@ -62,8 +62,8 @@
     <div class="inventory" data-group="all surface">
       <section class="section"><div class="section-title"><h2>HTTP API</h2><span>認証を既定必須</span></div><div class="cards">
         <div class="card"><span class="icon">GET</span><div><strong>/api/health / ready</strong><p>modeと本番設定診断を返す。秘密情報は返さない。</p></div></div>
-        <div class="card"><span class="icon">AUTH</span><div><strong>/api/auth/*</strong><p>事前登録済み会社メールの確認コード、session、ログアウト。</p></div></div>
-        <div class="card"><span class="icon">OAuth</span><div><strong>/api/asana/connection/*</strong><p>会社メール一致確認、利用者別Asana接続、token暗号化、解除。</p></div></div>
+        <div class="card"><span class="icon">AUTH</span><div><strong>/api/auth/asana/*</strong><p>PKCE付きAsanaログイン、事前登録・workspace確認、sessionとtokenの同時作成。</p></div></div>
+        <div class="card"><span class="icon">OAuth</span><div><strong>/api/asana/connection/*</strong><p>開発・切替用EmailCode方式のAsana接続・状態・解除。</p></div></div>
         <div class="card"><span class="icon">ADMIN</span><div><strong>/api/admin/*</strong><p>会社メール事前登録、利用停止・管理者・project制限・監査。</p></div></div>
         <div class="card"><span class="icon">POST</span><div><strong>/api/task-requests/organize</strong><p>原文保存と編集可能な親子候補生成。</p></div></div>
         <div class="card"><span class="icon">PUT</span><div><strong>/api/task-candidates/{id}</strong><p>確認・修正した親子候補を保存。</p></div></div>
@@ -77,7 +77,7 @@
       </div></section>
       <section class="section"><div class="section-title"><h2>Database</h2><span>EF Core migration</span></div><div class="cards">
         <div class="card"><span class="icon">U</span><div><strong>Users / UserSessions</strong><p>会社メール、権限、期限・失効可能なsession。</p></div></div>
-        <div class="card"><span class="icon">@</span><div><strong>EmailLoginCodes</strong><p>PBKDF2 hash、期限、試行回数。平文なし。</p></div></div>
+        <div class="card"><span class="icon">@</span><div><strong>EmailLoginCodes</strong><p>開発・切替用のPBKDF2 hash。Productionでは未使用。</p></div></div>
         <div class="card"><span class="icon">OA</span><div><strong>AsanaConnections</strong><p>一致確認済みAsana email、Data Protection暗号化token、workspace。</p></div></div>
         <div class="card"><span class="icon">P</span><div><strong>UserProjectPreferences</strong><p>お気に入りと許可project。</p></div></div>
         <div class="card"><span class="icon">R</span><div><strong>TaskRequests → TaskCandidates</strong><p>原文、source、開始日・期限、状態から編集可能な親候補へ。</p></div></div>
@@ -94,12 +94,12 @@
     <div class="inventory" data-group="all integration">
       <section class="section"><div class="section-title"><h2>Integration boundary</h2><span>設定で差し替え</span></div><div class="cards">
         <div class="card"><span class="icon">A</span><div><strong>Asana REST API</strong><p>project/section一覧 → 担当者名解決 → 開始日付きの親子タスク登録。</p></div></div>
-        <div class="card"><span class="icon">@</span><div><strong>Company SMTP</strong><p>会社メールへ短時間有効な確認コードを送信。</p></div></div>
+        <div class="card"><span class="icon">ID</span><div><strong>Asana OAuth Login</strong><p>本人確認、社内workspace所属、利用者別API権限を1回で確立。</p></div></div>
         <div class="card"><span class="icon">AI</span><div><strong>Gemini API</strong><p>JSON Schemaで親と0〜6件の子へ整理。実通信確認済み。</p></div></div>
         <div class="card"><span class="icon">AZ</span><div><strong>Azure OpenAI API</strong><p>v1 chat completionsとstrict JSON Schema。失敗時はRuleBasedへ継続。</p></div></div>
         <div class="card"><span class="icon">M</span><div><strong>Mock Asana</strong><p>認証情報なしで成功GIDを返し、全履歴を検証。</p></div></div>
         <div class="card"><span class="icon">DB</span><div><strong>SQL Server / InMemory</strong><p>本番履歴と外部依存なし開発を同じモデルで両立。</p></div></div>
-        <div class="card"><span class="icon">OS</span><div><strong>Clipboard / File / OCR / Speech</strong><p>議事録・画像・WBSはブラウザー内で文字化または正規化し、ファイル本体はAPIへ送らない。</p></div></div>
+        <div class="card"><span class="icon">OS</span><div><strong>Clipboard / File / OCR / Speech</strong><p>議事録・画像・WBSはブラウザー内で文字化または正規化。音声はマイク入力のみで、録音ファイルは対象外。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Data flow</h2><span>同期MVP</span></div><div class="cards">
         <div class="card"><span class="icon">1</span><div><strong>Capture</strong><p>端末入力・ファイル文字化 → React → validated HTTP JSON。</p></div></div>
@@ -112,16 +112,16 @@
 
     <div class="inventory" data-group="all risk">
       <section class="section"><div class="section-title"><h2>Known risks / unknowns</h2><span>事実と分離</span></div><div class="cards">
-        <div class="card risk critical"><span class="icon">!</span><div><strong>本番外部設定待ち</strong><p>会社SMTP、Asana OAuthアプリ、Azure OpenAI、HTTPS、永続暗号鍵の実値設定が必要。未設定なら起動を拒否。</p></div></div>
+        <div class="card risk critical"><span class="icon">!</span><div><strong>本番外部設定待ち</strong><p>Asana OAuthアプリと社内workspace公開、Azure OpenAI、HTTPS、永続暗号鍵の実値設定が必要。未設定なら起動を拒否。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>実連携検証はローカル限定</strong><p>SQL ServerとAsana限定projectへの担当者付き親子登録は成功。HTTPS配備と運用監視は未検証。</p></div></div>
-        <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。</p></div></div>
+        <div class="card risk"><span class="icon">?</span><div><strong>音声入力のブラウザー差</strong><p>Web Speech APIとHTTPS、マイク権限に依存。録音ファイルは対象外。</p></div></div>
         <div class="card risk"><span class="icon">?</span><div><strong>OCR初回モデル取得</strong><p>初回のみ日本語モデル取得が必要。精度は画像品質に依存し、確認・修正を前提とする。</p></div></div>
         <div class="card risk"><span class="icon">↻</span><div><strong>Asana親子登録は非原子的</strong><p>各HTTP結果を逐次保存し、部分失敗時は未完了の子だけを再試行する。</p></div></div>
         <div class="card risk"><span class="icon">人</span><div><strong>担当者名の同姓・表記差</strong><p>0件・複数一致は未割り当てと警告にし、誤割り当てを防ぐ。</p></div></div>
         <div class="card risk"><span class="icon">表</span><div><strong>WBSの読み取り結果は確認必須</strong><p>自動判定は補助。列・親子・件数・日付・担当者を登録前に確認する。</p></div></div>
       </div></section>
       <section class="section"><div class="section-title"><h2>Next actions</h2><span>優先順</span></div><div class="cards">
-        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>SMTP、OAuth、Azure OpenAI、Secret Store、暗号鍵、定期backup、監視を設定しready診断。</p></div></div>
+        <div class="card"><span class="icon">1</span><div><strong>HTTPS限定配備</strong><p>Asana OAuth・workspace公開、Azure OpenAI、Secret Store、暗号鍵、定期backup、監視を設定しready診断。</p></div></div>
         <div class="card"><span class="icon">2</span><div><strong>実端末QA</strong><p>iPhone/iPadカメラOCR・音声・clipboard・WBS、Windows tray/hotkey。</p></div></div>
       </div></section>
     </div>
@@ -134,14 +134,14 @@
       launcher:{type:'WinForms',name:'Windows Launcher',description:'trayに常駐し、Ctrl+Shift+Aまたはメニューから小型入力画面を開きます。',flow:'global hotkey / tray / clipboard → LauncherForm',sources:['src/TaskCapture.Launcher/LauncherApplicationContext.cs','src/TaskCapture.Launcher/Program.cs']},
       webview:{type:'WebView2',name:'Launcher Bridge',description:'同じReact画面をhostし、clipboardをJSON messageで渡し、登録完了messageで画面を隠します。',flow:'Windows clipboard ⇄ JSON web message ⇄ React SPA',sources:['src/TaskCapture.Launcher/LauncherForm.cs','src/taskcapture-web/src/App.tsx']},
       api:{type:'ASP.NET Core',name:'API Host',description:'DI、DB provider切替、CORS、Controller、Problem Details、production SPA配信、本番必須設定の安全側起動検証を構成します。',flow:'HTTP / configuration → readiness validation → controllers and services → HTTP / static assets',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Infrastructure/ApiExceptionHandler.cs','src/TaskCapture.Api/Services/ProductionConfigurationValidator.cs']},
-      auth:{type:'Security',name:'Email Auth & Authorization',description:'管理者が事前登録した会社メールだけへ6桁コードを送り、HttpOnly Cookie sessionを発行します。同じメールのAsana接続が完了するまで業務機能をロックし、利用停止時は全sessionとOAuth委任を失効します。',flow:'admin pre-registration → email/code → UserSession → matching Asana OAuth → business API → owner/admin/project checks',sources:['src/TaskCapture.Api/Controllers/AuthController.cs','src/TaskCapture.Api/Services/EmailAuthenticationService.cs','src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs','src/TaskCapture.Api/Services/AsanaConnectionService.cs','src/TaskCapture.Api/Controllers/AdminController.cs']},
+      auth:{type:'Security',name:'Asana Login & Authorization',description:'管理者が事前登録した会社メールのAsanaアカウントだけを許可し、PKCE・state・照合Cookieを検証してsessionと暗号化tokenを同時に作ります。通常ログアウトは現在端末を終了し、最後の端末または利用停止時にOAuthも失効します。',flow:'admin pre-registration → Asana OAuth + PKCE → domain/workspace/user check → UserSession + protected token → business API → owner/admin/project checks',sources:['src/TaskCapture.Api/Controllers/AuthController.cs','src/TaskCapture.Api/Services/AsanaConnectionService.cs','src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs','src/TaskCapture.Api/Controllers/AdminController.cs','tests/TaskCapture.Api.Tests/AsanaOAuthAuthenticationApiTests.cs']},
       workflow:{type:'Application Service',name:'Task Workflow',description:'入力保存、親子候補生成・更新、親先行の冪等登録、部分失敗からの再開、状態遷移、監査を調停します。',flow:'validated DTO → parent/child entities → adapters → complete or partial registration response',sources:['src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Contracts/TaskDtos.cs']},
       wbsflow:{type:'Application Service',name:'WBS Import Workflow',description:'最大5,000行を登録前に検証し、担当者確認、親の日付集約、前回との差分判定を行います。新規は親優先に作り、変更行は上書きでき、今回作成分だけを元に戻せます。',flow:'confirmed rows → validation/change check → profile/alias/batch/row → Asana create/update/delete → per-row save',sources:['src/TaskCapture.Api/Services/WbsImportService.cs','src/TaskCapture.Api/Contracts/WbsImportDtos.cs','src/TaskCapture.Api/Controllers/WbsImportsController.cs']},
       organizer:{type:'Domain Service',name:'Task Organizer',description:'設定でRuleBased、Gemini、Azure OpenAIを選択し、親の基本項目とサブタスク候補を抽出します。外部AI失敗時はRuleBasedへ継続します。',flow:'raw text + Japan date → provider adapter → shared validation → OrganizedTask with subtasks',sources:['src/TaskCapture.Api/Program.cs','src/TaskCapture.Api/Services/TaskOrganizer.cs','src/TaskCapture.Api/Services/StructuredTaskOrganization.cs','src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs','src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs']},
       gemini:{type:'AI Adapter',name:'Gemini + fallback',description:'Google Gen AI .NET SDKとJSON Schemaで親候補と必要な0〜6件の実行可能なサブタスクを構造化します。キー未設定、timeout、API/応答エラーではRuleBasedへ自動フォールバックします。',flow:'raw text + server-side secret → Gemini API → validated OrganizedTask / RuleBased fallback',sources:['src/TaskCapture.Api/Services/GeminiTaskOrganizer.cs','src/TaskCapture.Api/Options/IntegrationOptions.cs','tests/TaskCapture.Api.Tests/GeminiTaskOrganizerTests.cs']},
       azure:{type:'AI Adapter',name:'Azure OpenAI + fallback',description:'Azure OpenAI v1 chat completionsへstrict JSON Schemaを送り、Geminiと共通の検証で候補へ変換します。キーはサーバーSecretだけに置きます。',flow:'raw text + server-side secret → Azure OpenAI v1 → validated OrganizedTask / RuleBased fallback',sources:['src/TaskCapture.Api/Services/AzureOpenAITaskOrganizer.cs','src/TaskCapture.Api/Services/StructuredTaskOrganization.cs','tests/TaskCapture.Api.Tests/AzureOpenAITaskOrganizerTests.cs']},
       db:{type:'EF Core / SQL Server',name:'Persistence',description:'認証、メール一致確認済みの暗号化Asana接続、権限、通常入力、WBS、監査を含む16テーブルと9 migrationを管理します。Development/TestはInMemoryへ切り替わります。',flow:'entities ⇄ EF Core ⇄ SQL Server',sources:['src/TaskCapture.Api/Data/TaskCaptureDbContext.cs','src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Data/Migrations/20260725220328_AddAsanaUserEmail.cs']},
-      asana:{type:'External Adapter',name:'Asana / Mock',description:'PATまたは利用者別OAuthでproject/sectionを提供します。OAuthは会社メールとAsana emailの一致後だけtokenを暗号化保存し、接続を業務APIの必須条件にします。解除・利用停止時はprovider revoke後にローカルtokenを消去します。',flow:'OAuth profile email = company email → protected token → business authorization → allowed projects → confirmed tasks → Asana REST',sources:['src/TaskCapture.Api/Controllers/AsanaMetadataController.cs','src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Services/AsanaConnectionService.cs','src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs','src/TaskCapture.Api/Services/ProjectAccessService.cs']},
+      asana:{type:'External Adapter',name:'Asana / Mock',description:'Asana OAuthでアプリログインと利用者別API委任を同時に完了し、本人が見られるproject/sectionだけを提供します。tokenは暗号化保存し、最後の端末のログアウトまたは利用停止時にprovider revoke後ローカルtokenを消去します。',flow:'Asana OAuth + profile/workspace check → session + protected token → business authorization → allowed projects → confirmed tasks → Asana REST',sources:['src/TaskCapture.Api/Controllers/AuthController.cs','src/TaskCapture.Api/Controllers/AsanaMetadataController.cs','src/TaskCapture.Api/Services/AsanaServices.cs','src/TaskCapture.Api/Services/AsanaConnectionService.cs','src/TaskCapture.Api/Security/AsanaConnectionAuthorization.cs','src/TaskCapture.Api/Services/ProjectAccessService.cs']},
       audit:{type:'Data Model',name:'History & Audit',description:'認証、Asana接続、権限変更、入力、WBS、登録・更新・取り消しをUTCで保存します。',flow:'security/workflow events → 16 normalized tables',sources:['src/TaskCapture.Api/Data/Entities.cs','src/TaskCapture.Api/Services/TaskWorkflowService.cs','src/TaskCapture.Api/Services/WbsImportService.cs']}
     };
     const description=document.getElementById('detail-description'),flow=document.getElementById('detail-flow'),sources=document.getElementById('detail-sources'),name=document.getElementById('detail-name'),type=document.getElementById('detail-type');

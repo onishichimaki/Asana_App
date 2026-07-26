@@ -189,7 +189,7 @@ public sealed class EmailAuthenticationService(
             session.ExpiresAtUtc);
     }
 
-    public async Task RevokeSessionAsync(
+    public async Task<bool> RevokeSessionAsync(
         Guid sessionId,
         string correlationId,
         CancellationToken cancellationToken)
@@ -197,7 +197,16 @@ public sealed class EmailAuthenticationService(
         var session = await db.UserSessions.SingleOrDefaultAsync(
             item => item.Id == sessionId,
             cancellationToken);
-        if (session is null || session.RevokedAtUtc is not null) return;
+        if (session is null) return false;
+
+        if (session.RevokedAtUtc is not null)
+        {
+            return await HasAnotherActiveSessionAsync(
+                session.UserId,
+                session.Id,
+                timeProvider.GetUtcNow(),
+                cancellationToken);
+        }
 
         var now = timeProvider.GetUtcNow();
         session.RevokedAtUtc = now;
@@ -212,7 +221,25 @@ public sealed class EmailAuthenticationService(
             CreatedAtUtc = now
         });
         await db.SaveChangesAsync(cancellationToken);
+
+        return await HasAnotherActiveSessionAsync(
+            session.UserId,
+            session.Id,
+            now,
+            cancellationToken);
     }
+
+    private Task<bool> HasAnotherActiveSessionAsync(
+        Guid userId,
+        Guid currentSessionId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken) =>
+        db.UserSessions.AnyAsync(
+            item => item.UserId == userId
+                && item.Id != currentSessionId
+                && item.RevokedAtUtc == null
+                && item.ExpiresAtUtc > now,
+            cancellationToken);
 
     private string NormalizeAndValidateEmail(string value)
     {

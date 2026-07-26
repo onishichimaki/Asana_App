@@ -48,6 +48,7 @@ public sealed class AsanaOAuthOptions
     public string? ClientId { get; set; }
     public string? ClientSecret { get; set; }
     public string? RedirectUri { get; set; }
+    public string? ConnectionRedirectUri { get; set; }
     public bool RequireMatchingEmail { get; set; } = true;
     public string[] Scopes { get; set; } =
     [
@@ -69,7 +70,14 @@ public sealed class AccessOptions
     public string LocalDisplayName { get; set; } = "ローカル利用者";
     public string[] AdminEmails { get; set; } = [];
     public string[] AllowedEmailDomains { get; set; } = [];
+    public AsanaLoginOptions AsanaLogin { get; set; } = new();
     public EmailCodeOptions EmailCode { get; set; } = new();
+}
+
+public sealed class AsanaLoginOptions
+{
+    public int CorrelationLifetimeMinutes { get; set; } = 10;
+    public int SessionDays { get; set; } = 14;
 }
 
 public sealed class EmailCodeOptions
