@@ -247,6 +247,7 @@ Productionでは、SQL Server、Asanaログインと社内workspace、Azure Open
 
 ## 文書
 
+- [会社環境への安全な取込み・導入手順](docs/COMPANY_ADOPTION_GUIDE.md)
 - [要件](REQUIREMENTS.md)
 - [アーキテクチャ](ARCHITECTURE.md)
 - [実装計画](IMPLEMENTATION_PLAN.md)
