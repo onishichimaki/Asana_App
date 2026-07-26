@@ -42,6 +42,7 @@ WBS一括取込では、`.xlsx` / `.csv` を選択すると見出し行・列・
 | F-22 | 配布・運用 | Windows自動起動、配布ZIP、SQLバックアップ、ready health、CIを提供する |
 | F-23 | 本番安全診断 | ProductionではSQL Server、AsanaOAuthログイン、社内workspace、必要scope、Azure OpenAI、HTTPS callback、永続Data Protection鍵が未設定なら起動を拒否し、readyで秘密値を出さず状態を確認できる |
 | F-24 | 利用停止 | 利用停止時に発行済みsessionをすべて失効し、Asana OAuthをprovider側で解除してローカルtokenを消去する。再開時はAsana再接続を必須とする |
+| F-25 | 認証前の画面確認 | 未認証でも通常入力、見本整理、Excel/CSV読取・マッピング・親子プレビューを操作できる。入力やファイルを業務APIへ送らず、Asana情報取得・登録、履歴、利用者設定は利用できない |
 
 ## 可変レイアウトWBS取込
 
@@ -77,6 +78,7 @@ Excel/CSVから複数のタスクを一括変換する。誤登録を避ける�
 - セキュリティ: 秘密情報をクライアント、URL、監査ログへ含めない。入力長と形式をサーバーで検証する。画像OCRはブラウザー内で行い、画像ファイルをAPI/DBへ送信・保存しない。
 - 認証: 本番は事前登録済み会社メールのAsana OAuthとHttpOnly/Secure Cookieを使用する。OAuth開始はPKCE S256、改ざん防止state、短時間照合Cookieで保護し、Asana OAuth tokenはData Protection暗号文だけを保存する。
 - 認可: APIは認証、有効なAsana接続、所有者、Asana側とアプリ側のproject許可をサーバー側で確認する。管理APIは管理者policyを必須とする。
+- 認証前確認: 画面確認モードはReact内だけで動作し、業務APIの認証・認可を緩和しない。見本データを実Asanaデータと明確に区別する。
 - 乱用防止: メールコード送信・検証の回数制限、全APIの固定窓rate limit、期限切れ・失敗回数超過・session失効を実装する。
 - 可用性: Azure OpenAIまたはGeminiの未設定・失敗時はルールベースへフォールバックし、Development/Testは外部サービス未設定でもモック構成で起動できる。
 - 冪等性: 親タスク作成後に一部サブタスクが失敗した場合、親と成功済みサブタスクを重複作成せず失敗分だけ再試行する。

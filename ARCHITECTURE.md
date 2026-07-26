@@ -147,6 +147,8 @@ sequenceDiagram
 
 Productionでは `AsanaOAuth` ログインだけを許可し、Development認証やEmailCodeでの起動を拒否する。`Access:AdminEmails` は最初の管理者だけをサーバー設定で許可するbootstrapで、以後は管理APIの事前登録済みUsersだけがログインできる。APIはfallback policyで認証と有効なAsana接続を既定必須とし、匿名許可はログイン開始・callback、`/api/auth/me`、health、SPAに限定する。利用者IDはHTTP headerから受け取らず、検証済みclaimsから `ICurrentUserContext` が作る安定キーを使う。
 
+未認証の画面確認モードは配信済みReact SPA内だけの状態として実装する。通常入力はクライアント内の見本整理、WBSは既存のブラウザー内parser・mapperと見本project/sectionだけを使用し、業務APIを呼ばない。Asana登録、server dry-run、履歴、ImportProfile保存、利用者設定は無効にする。したがって説明・稟議用の画面確認を可能にしても、APIのfallback policy、Asana接続要件、所有者・project認可境界は変わらない。
+
 Asana OAuthログインはPKCE S256、Data Protectionで保護したstate、HttpOnlyの短時間照合Cookieをすべて検証する。callback後に `/users/me` のemailとworkspacesを取得し、許可会社ドメインの事前登録済みメールかつ `DefaultWorkspaceGid` の社内workspaceに所属する場合だけ、sessionとtokenを保存する。期限2分前からサーバー側でrefreshする。project一覧はAsana権限で絞られ、`RestrictProjects=true` の利用者はさらにアプリ許可一覧を通す。通常ログアウトは現在端末のsessionを失効し、ほかに有効sessionがない時だけAsanaへOAuth解除を要求してローカルtokenを消去する。管理者による利用停止は全sessionとOAuthを即時失効する。
 
 ## 状態遷移

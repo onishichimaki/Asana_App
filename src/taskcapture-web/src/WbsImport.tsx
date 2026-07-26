@@ -557,7 +557,7 @@ function statusLabel(status: string) {
   return labels[status] ?? status
 }
 
-export default function WbsImport() {
+export default function WbsImport({ previewMode = false }: { previewMode?: boolean }) {
   const [file, setFile] = useState<File | null>(null)
   const [fileHash, setFileHash] = useState('')
   const [sheets, setSheets] = useState<SheetData[]>([])
@@ -608,20 +608,30 @@ export default function WbsImport() {
     .length, [dataStartRow, selectedSheet])
 
   useEffect(() => {
+    if (previewMode) {
+      setProfiles([])
+      setColumnAliases([])
+      setHistory([])
+      return
+    }
     requestJson<Profile[]>('/api/wbs-imports/profiles').then(setProfiles).catch(() => setProfiles([]))
     requestJson<ColumnAlias[]>('/api/wbs-imports/column-names').then(setColumnAliases).catch(() => setColumnAliases([]))
     requestJson<BatchSummary[]>('/api/wbs-imports/batches?take=20').then(setHistory).catch(() => setHistory([]))
-  }, [])
+  }, [previewMode])
 
   useEffect(() => {
     if (!effectiveProjectGid) {
       setCustomFields([])
       return
     }
+    if (previewMode) {
+      setCustomFields([])
+      return
+    }
     requestJson<CustomField[]>(`/api/asana/projects/${effectiveProjectGid}/fields`)
       .then(setCustomFields)
       .catch(() => setCustomFields([]))
-  }, [effectiveProjectGid])
+  }, [effectiveProjectGid, previewMode])
 
   useEffect(() => {
     if (headers.length === 0) {
@@ -776,6 +786,10 @@ export default function WbsImport() {
   }
 
   const saveProfile = async (overwrite: boolean) => {
+    if (previewMode) {
+      setMessage('読み取り方の保存はログイン後に利用できます。')
+      return
+    }
     if (!profileName.trim()) {
       setMessage('この読み取り方に名前を付けてください。')
       return
@@ -812,6 +826,7 @@ export default function WbsImport() {
   }
 
   const deleteProfile = async () => {
+    if (previewMode) return
     if (!selectedProfileId) return
     setBusy('profile')
     try {
@@ -860,6 +875,10 @@ export default function WbsImport() {
   }
 
   const createServerPreview = async () => {
+    if (previewMode) {
+      setMessage('画面確認モードではサーバーへ送信しません。ログイン後に検証・登録できます。')
+      return
+    }
     if (!file || !previewRows) return
     const unresolved = previewRows.some(row => row.included && row.validationErrors.length > 0)
     if (unresolved) {
@@ -1085,7 +1104,7 @@ export default function WbsImport() {
       <ol className="wbs-steps" aria-label="Excel・CSV登録の流れ">
         <li className={stepClass(1)} aria-current={currentStep === 1 ? 'step' : undefined}><span>1</span><strong>ファイルを選ぶ</strong></li>
         <li className={stepClass(2)} aria-current={currentStep === 2 ? 'step' : undefined}><span>2</span><strong>読み取りを確認</strong></li>
-        <li className={stepClass(3)} aria-current={currentStep === 3 ? 'step' : undefined}><span>3</span><strong>Asanaへ登録</strong></li>
+        <li className={stepClass(3)} aria-current={currentStep === 3 ? 'step' : undefined}><span>3</span><strong>{previewMode ? '内容を確認' : 'Asanaへ登録'}</strong></li>
       </ol>
 
       <section className="panel wbs-file-panel">
@@ -1126,6 +1145,7 @@ export default function WbsImport() {
           </div>
           <AsanaDestinationPicker
             idPrefix="wbs"
+            previewMode={previewMode}
             projectGid={projectGid}
             sectionGid={sectionGid}
             disabled={busy !== null}
@@ -1221,7 +1241,7 @@ export default function WbsImport() {
               {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}{profile.layoutSignature === layoutSignature ? '（このファイルに一致）' : ''}</option>)}
             </select>
             <input aria-label="読み取り方の名前" value={profileName} maxLength={200} placeholder="名前（例：給食の予定表）" onChange={event => setProfileName(event.target.value)} />
-            <button type="button" onClick={() => void saveProfile(false)} disabled={busy !== null || mappingErrors.length > 0}>新しく保存</button>
+            <button type="button" onClick={() => void saveProfile(false)} disabled={previewMode || busy !== null || mappingErrors.length > 0} title={previewMode ? 'ログイン後に利用できます' : undefined}>新しく保存</button>
             {selectedProfileId && <button type="button" onClick={() => void saveProfile(true)} disabled={busy !== null || mappingErrors.length > 0}>上書き</button>}
             {selectedProfileId && <button type="button" className="danger-link" onClick={() => void deleteProfile()} disabled={busy !== null}>削除</button>}
           </div>
@@ -1303,7 +1323,7 @@ export default function WbsImport() {
           <button type="button" disabled={safePage === pageCount} onClick={() => setPage(current => Math.min(pageCount, current + 1))}>次へ</button>
         </nav>}
 
-        {!batch && <button type="button" className="primary-button" onClick={() => void createServerPreview()} disabled={busy !== null || includedCount === 0 || errorCount > 0}>{busy === 'preview' ? '検証しています…' : 'この内容を確定する'}</button>}
+        {!batch && <button type="button" className="primary-button" onClick={() => void createServerPreview()} disabled={previewMode || busy !== null || includedCount === 0 || errorCount > 0} title={previewMode ? 'ログイン後に検証・登録できます' : undefined}>{busy === 'preview' ? '検証しています…' : previewMode ? 'ログインするとこの内容を登録できます' : 'この内容を確定する'}</button>}
         {batch && <div className="wbs-register-actions">
           <button type="button" className="asana-button" onClick={() => setConfirmingRegistration(true)} disabled={busy !== null || batch.status === 'Registered'}>{busy === 'register' ? 'Asanaへ登録しています…' : batch.status === 'Registered' ? '登録完了' : 'Asanaへ一括登録'}</button>
           {batch.status === 'Ready' && <button type="button" className="secondary-button" onClick={() => setBatch(null)} disabled={busy !== null}>内容を直す</button>}

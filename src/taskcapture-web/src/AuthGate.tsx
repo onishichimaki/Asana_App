@@ -4,6 +4,7 @@ import './AuthGate.css'
 
 export type AuthAccount = {
   authenticated: boolean
+  previewMode: boolean
   mode: 'Development' | 'EmailCode' | 'AsanaOAuth'
   email: string | null
   displayName: string | null
@@ -28,6 +29,7 @@ type RequestCodeResponse = {
 function AuthGate({ children }: AuthGateProps) {
   const launcherLogin = new URLSearchParams(window.location.search).get('launcher') === '1'
   const [account, setAccount] = useState<AuthAccount | null>(null)
+  const [previewing, setPreviewing] = useState(false)
   const [step, setStep] = useState<LoginStep>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -50,8 +52,9 @@ function AuthGate({ children }: AuthGateProps) {
 
   const loadAccount = async () => {
     const result = await requestJson<AuthAccount>('/api/auth/me')
-    setAccount(result)
-    return result
+    const normalized = { ...result, previewMode: false }
+    setAccount(normalized)
+    return normalized
   }
 
   useEffect(() => {
@@ -109,20 +112,43 @@ function AuthGate({ children }: AuthGateProps) {
     setMessage(null)
   }
 
+  const exitPreview = async () => {
+    setPreviewing(false)
+    setMessage(null)
+  }
+
   if (!account) {
-    return <main className="auth-shell"><div className="auth-loading" role="status"><span />アプリを準備しています…</div>{message && <p className="auth-error">{message}</p>}</main>
+    return <main className={`auth-shell ${launcherLogin ? 'launcher-auth-shell' : ''}`}><div className="auth-loading" role="status"><span />アプリを準備しています…</div>{message && <p className="auth-error">{message}</p>}</main>
   }
 
   if (account.authenticated) {
     return <>{children(account, logout)}</>
   }
 
+  if (previewing) {
+    return <>{children({
+      ...account,
+      authenticated: false,
+      previewMode: true,
+      email: null,
+      displayName: '画面確認モード',
+      isAdmin: false,
+      asanaCredentialMode: 'Preview',
+      asanaConnectionRequired: false,
+      asanaConnected: false,
+    }, exitPreview)}</>
+  }
+
   const domainHint = account.allowedEmailDomains.length > 0
     ? account.allowedEmailDomains.map(domain => `@${domain}`).join('、')
     : '会社メール'
+  const previewAction = <div className="auth-preview">
+    <div><strong>まず画面を確認したい方</strong><small>入力内容は保存・送信されません</small></div>
+    <button type="button" onClick={() => { setPreviewing(true); setMessage(null) }}>ログインせず画面を見る</button>
+  </div>
 
   return (
-    <main className="auth-shell">
+    <main className={`auth-shell ${launcherLogin ? 'launcher-auth-shell' : ''}`}>
       <section className="auth-card" aria-labelledby="sign-in-title">
         <div className="auth-mark" aria-hidden="true">✓</div>
         <p className="auth-eyebrow">TASK CAPTURE</p>
@@ -138,6 +164,7 @@ function AuthGate({ children }: AuthGateProps) {
               <a className="auth-asana-button" href={`/api/auth/asana/start${launcherLogin ? '?launcher=true' : ''}`} onClick={() => { setBusy(true); setMessage(null) }} aria-busy={busy}>
                 <span aria-hidden="true">a</span>{busy ? 'Asanaを開いています…' : 'Asanaでログイン'}
               </a>
+              {previewAction}
               <ul>
                 <li>自分が見られるAsanaプロジェクトだけ表示します</li>
                 <li>パスワードはこのアプリに保存しません</li>
@@ -188,6 +215,8 @@ function AuthGate({ children }: AuthGateProps) {
                 メールアドレスを変更
               </button>
             </form>}
+
+        {account.mode !== 'AsanaOAuth' && previewAction}
 
         {message && <p className="auth-error" role="alert">{message}</p>}
         <p className="auth-note">{account.mode === 'AsanaOAuth'

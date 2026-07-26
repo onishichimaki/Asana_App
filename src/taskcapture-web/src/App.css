@@ -25,11 +25,14 @@ h2 { margin:0; font-size:1.02rem; line-height:1.4; letter-spacing:-.01em; }
 .connection { display:flex; align-items:center; gap:6px; flex:none; min-height:28px; padding:5px 9px; border:1px solid var(--line); border-radius:999px; background:var(--paper); color:var(--muted); font-size:.7rem; font-weight:700; }
 .connection span { width:8px; height:8px; border-radius:50%; background:#98a2b3; }
 .connection.online span { background:#17a579; box-shadow:0 0 0 3px #d7f4ea; }
+.connection.preview-connection { border-color:#d5b36b; color:#74500d; background:#fff8e8; }
+.connection.preview-connection span { background:#d28a00; box-shadow:0 0 0 3px #ffedc3; }
 .account-button { display:flex; align-items:center; gap:6px; min-width:0; min-height:30px; padding:4px 8px 4px 5px; border:1px solid var(--line); border-radius:999px; color:#3e4a5d; background:#fff; cursor:pointer; }
 .account-button>span { display:grid; place-items:center; width:21px; height:21px; flex:none; border-radius:50%; color:#fff; background:#5268b4; font-size:.62rem; font-weight:900; }
 .account-button>strong { max-width:125px; overflow:hidden; font-size:.66rem; text-overflow:ellipsis; white-space:nowrap; }
 .account-button:hover:not(.development-account) { border-color:#9eafe8; background:#f8faff; }
 .account-button.development-account { cursor:default; }
+.account-button.preview-account>span { background:#b87300; }
 .mode-switch { display:grid; grid-template-columns:1fr 1.35fr .75fr .85fr; gap:5px; margin-bottom:10px; padding:4px; border:1px solid var(--line); border-radius:11px; background:#e9edf4; }
 .mode-switch button { min-height:38px; border:0; border-radius:8px; color:#5a6678; background:transparent; cursor:pointer; font-size:.82rem; font-weight:700; }
 .mode-switch button.active { color:var(--accent-dark); background:#fff; box-shadow:0 2px 8px rgba(28,39,57,.1); }
@@ -37,6 +40,10 @@ h2 { margin:0; font-size:1.02rem; line-height:1.4; letter-spacing:-.01em; }
 .connection-required { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; padding:11px 13px; border:1px solid #efc17c; border-radius:11px; color:#714b09; background:#fff8eb; }
 .connection-required strong { font-size:.82rem; }
 .connection-required span { font-size:.72rem; line-height:1.5; }
+.preview-banner { display:flex; align-items:center; gap:9px; margin-bottom:10px; padding:9px 11px; border:1px solid #e8c77d; border-radius:10px; color:#704d0d; background:#fff9eb; }
+.preview-banner strong { flex:none; font-size:.76rem; }
+.preview-banner span { min-width:0; flex:1; font-size:.7rem; line-height:1.45; }
+.preview-banner button { flex:none; min-height:32px; padding:5px 9px; border:1px solid #d4a94f; border-radius:7px; color:#704d0d; background:#fff; cursor:pointer; font-size:.68rem; font-weight:800; }
 
 .panel { padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:0 8px 24px rgba(28,39,57,.06); }
 .candidate-panel { margin-top:10px; }
@@ -78,6 +85,8 @@ textarea:focus,input:focus,select:focus { border-color:var(--accent); box-shadow
 .primary-button:disabled,.asana-button:disabled { cursor:not-allowed; opacity:.52; box-shadow:none; }
 .asana-button { margin-top:14px; background:#172033; box-shadow:0 6px 16px rgba(23,32,51,.16); }
 .asana-button:hover:not(:disabled) { background:#27334a; }
+.asana-button.preview-register { background:#76510e; box-shadow:0 6px 16px rgba(118,81,14,.16); }
+.asana-button.preview-register:hover:not(:disabled) { background:#61420b; }
 .check { display:grid; place-items:center; width:22px; height:22px; border-radius:6px; color:#172033; background:#fff; font-size:.78rem; }
 
 .field { display:flex; flex-direction:column; gap:5px; }
@@ -157,6 +166,8 @@ footer button:disabled { opacity:.45; cursor:default; }
 .launcher-shell .topbar { margin-bottom:5px; }
 .launcher-shell .mode-switch { grid-template-columns:repeat(4,minmax(0,1fr)); gap:3px; margin-bottom:6px; padding:3px; }
 .launcher-shell .mode-switch button { min-height:32px; padding:3px 2px; font-size:.69rem; line-height:1.2; white-space:nowrap; }
+.launcher-shell .preview-banner { padding:7px 9px; }
+.launcher-shell .preview-banner span { display:none; }
 .launcher-shell .panel { padding:10px 12px; }
 .launcher-shell .section-heading,.launcher-shell .input-source-grid { margin-bottom:8px; }
 .launcher-shell .input-source-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
